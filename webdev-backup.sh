@@ -200,57 +200,99 @@ case "$choice" in
             # Create simplified dashboard without gnuplot
             DASHBOARD_FILE="$SCRIPT_DIR/logs/dashboard/backup_dashboard.html"
             
-            # Create dashboard with basic HTML only
+            # Create dashboard with ultra-minimal HTML (no CSS, no complex styling)
             cat > "$DASHBOARD_FILE" << EOL
 <!DOCTYPE html>
 <html>
 <head>
     <title>WebDev Backup Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        h1, h2 { color: #2c3e50; }
-        .stat-box { background: #f8f9fa; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 5px; }
-        .footer { color: #777; text-align: center; margin-top: 30px; font-size: 14px; }
-    </style>
 </head>
 <body>
     <h1>WebDev Backup Dashboard</h1>
     <p>Generated on $(date)</p>
     
+    <hr>
     <h2>Last Backup Summary</h2>
-    <div class="stat-box">
-        <p><strong>Date:</strong> $backup_date</p>
-        <p><strong>Projects:</strong> $projects_count</p>
-        <p><strong>Total Size:</strong> $backup_size</p>
-        <p><strong>Location:</strong> $backup_location</p>
-    </div>
+    <ul>
+        <li><strong>Date:</strong> $backup_date</li>
+        <li><strong>Projects:</strong> $projects_count</li>
+        <li><strong>Total Size:</strong> $backup_size</li>
+        <li><strong>Location:</strong> $backup_location</li>
+    </ul>
     
+    <hr>
     <h2>Recent Backup History</h2>
-    <div class="stat-box">
-        <pre>$(grep -A2 "BACKUP: SUCCESS" "$BACKUP_HISTORY_LOG" | head -9)</pre>
-    </div>
+    <pre>
+$(grep -A2 "BACKUP: SUCCESS" "$BACKUP_HISTORY_LOG" | head -9)
+    </pre>
     
-    <div class="footer">
-        <p>WebDev Backup Tool</p>
-    </div>
+    <hr>
+    <h2>Failed Backups</h2>
+    <pre>
+$(grep -A2 "BACKUP: FAILED\|BACKUP: PARTIAL" "$BACKUP_HISTORY_LOG" | head -6)
+    </pre>
+    
+    <hr>
+    <p>WebDev Backup Tool - Backup report</p>
 </body>
 </html>
 EOL
             
             echo -e "${GREEN}✓ Simple HTML Dashboard created: $DASHBOARD_FILE${NC}"
             
-            # Try to open the dashboard
+            # Try to open the dashboard, preferring text-based browsers first
             if [ -n "$DASHBOARD_FILE" ] && [ -f "$DASHBOARD_FILE" ]; then
                 echo -e "\n${GREEN}✓ HTML Dashboard generated successfully!${NC}"
-                if command -v xdg-open >/dev/null 2>&1; then
+                
+                # Try text-based browsers first to avoid GPU issues
+                if command -v lynx >/dev/null 2>&1; then
+                    echo -e "${CYAN}Opening in text browser (lynx)...${NC}"
+                    lynx "$DASHBOARD_FILE"
+                    return_to_menu=true
+                elif command -v w3m >/dev/null 2>&1; then
+                    echo -e "${CYAN}Opening in text browser (w3m)...${NC}"
+                    w3m "$DASHBOARD_FILE"
+                    return_to_menu=true
+                elif command -v links >/dev/null 2>&1; then
+                    echo -e "${CYAN}Opening in text browser (links)...${NC}"
+                    links "$DASHBOARD_FILE"
+                    return_to_menu=true
+                # Fall back to graphical browsers if text browsers aren't available
+                elif command -v xdg-open >/dev/null 2>&1; then
                     echo -e "${CYAN}Opening in browser...${NC}"
+                    echo -e "${YELLOW}Note: You can also view the file directly: less $DASHBOARD_FILE${NC}"
                     xdg-open "$DASHBOARD_FILE" &
                 elif command -v open >/dev/null 2>&1; then
                     echo -e "${CYAN}Opening in browser...${NC}"
+                    echo -e "${YELLOW}Note: You can also view the file directly: less $DASHBOARD_FILE${NC}"
                     open "$DASHBOARD_FILE" &
                 else
-                    echo -e "${YELLOW}HTML Dashboard saved to: $DASHBOARD_FILE${NC}"
-                    echo -e "${YELLOW}Please open it manually in your browser.${NC}"
+                    # If no browser is available, display the file with less
+                    echo -e "${YELLOW}Opening dashboard with less:${NC}"
+                    less "$DASHBOARD_FILE"
+                    return_to_menu=true
+                fi
+                
+                echo -e "${GREEN}Dashboard saved to: $DASHBOARD_FILE${NC}"
+                
+                # Offer to display plain text version
+                echo -e "${CYAN}Would you like to see a plain text version of the dashboard? [y/N] ${NC}"
+                read -n 1 -r display_text
+                echo
+                if [[ "$display_text" =~ ^[Yy]$ ]]; then
+                    echo -e "\n${CYAN}===== DASHBOARD TEXT VERSION =====${NC}\n"
+                    echo "WEBDEV BACKUP DASHBOARD"
+                    echo "Generated on: $(date)"
+                    echo "-------------------------------------"
+                    echo "LAST BACKUP SUMMARY:"
+                    echo "  Date:       $backup_date"
+                    echo "  Projects:   $projects_count"
+                    echo "  Total Size: $backup_size"
+                    echo "  Location:   $backup_location"
+                    echo "-------------------------------------"
+                    echo "RECENT BACKUP HISTORY:"
+                    grep -A2 "BACKUP: SUCCESS" "$BACKUP_HISTORY_LOG" | head -9 | sed 's/^/  /'
+                    echo "-------------------------------------"
                 fi
             fi
             
