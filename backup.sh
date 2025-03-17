@@ -191,7 +191,13 @@ START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 # Start logging
 log "Starting backup script" "$LOG_FILE" "$SILENT_MODE"
 log "Source directory: $SOURCE_DIR" "$LOG_FILE" "$SILENT_MODE"
+if [ "$SOURCE_DIR" = "$DEFAULT_SOURCE_DIR" ]; then
+    log "Using default source directory: $DEFAULT_SOURCE_DIR" "$LOG_FILE" "$SILENT_MODE"
+fi
 log "Backup destination: $FULL_BACKUP_PATH" "$LOG_FILE" "$SILENT_MODE"
+if [ "$BACKUP_DIR" = "$DEFAULT_BACKUP_DIR" ]; then
+    log "Using default backup directory: $DEFAULT_BACKUP_DIR" "$LOG_FILE" "$SILENT_MODE"
+fi
 log "Backup type: $BACKUP_TYPE" "$LOG_FILE" "$SILENT_MODE"
 log "Compression level: $COMPRESSION_LEVEL" "$LOG_FILE" "$SILENT_MODE"
 
@@ -648,15 +654,23 @@ log "Backup record added to history log at $BACKUP_HISTORY_LOG" "$LOG_FILE" "$SI
 if [ "$SILENT_MODE" = true ]; then
     if [ "$DRY_RUN" = true ]; then
         echo "DRY RUN COMPLETED: Would backup $SUCCESSFUL_PROJECTS projects, Estimated size $TOTAL_FORMATTED_SIZE"
+        echo "Source: $SOURCE_DIR"
+        echo "Destination: $FULL_BACKUP_PATH"
     elif [ $FAILED_PROJECTS -eq 0 ]; then
-        echo "BACKUP SUCCESSFUL: $SUCCESSFUL_PROJECTS projects, Size $TOTAL_FORMATTED_SIZE at $FULL_BACKUP_PATH"
+        echo "BACKUP SUCCESSFUL: $SUCCESSFUL_PROJECTS projects, Size $TOTAL_FORMATTED_SIZE"
+        echo "Source: $SOURCE_DIR"
+        echo "Destination: $FULL_BACKUP_PATH"
     else
         echo "BACKUP COMPLETED WITH ERRORS: $FAILED_PROJECTS failed, $SUCCESSFUL_PROJECTS succeeded"
+        echo "Source: $SOURCE_DIR"
+        echo "Destination: $FULL_BACKUP_PATH"
     fi
 else
     if [ "$DRY_RUN" = true ]; then
         echo -e "\n${YELLOW}DRY RUN COMPLETED: No actual backups were created${NC}"
         echo -e "${YELLOW}Would have backed up $SUCCESSFUL_PROJECTS projects, Estimated size $TOTAL_FORMATTED_SIZE${NC}"
+        echo -e "${YELLOW}Source: ${GREEN}$SOURCE_DIR${NC}"
+        echo -e "${YELLOW}Destination: ${GREEN}$FULL_BACKUP_PATH${NC}"
     fi
     echo -e "${CYAN}Finished at: $(date)${NC}\n"
     

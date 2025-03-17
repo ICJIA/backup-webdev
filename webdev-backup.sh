@@ -28,10 +28,10 @@ echo -e "Current date: $(date '+%Y-%m-%d %H:%M:%S')\n"
 
 # Show configuration summary
 echo -e "${YELLOW}Current Configuration:${NC}"
-echo -e "- Source directory:      ${SOURCE_DIR:-$DEFAULT_SOURCE_DIR}"
-echo -e "- Backup destination:    ${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"
-echo -e "- Logs directory:        $LOGS_DIR"
-echo -e "- Test directory:        $TEST_DIR"
+echo -e "- Source directory:      ${SOURCE_DIR:-$DEFAULT_SOURCE_DIR} (Absolute: $(realpath "${SOURCE_DIR:-$DEFAULT_SOURCE_DIR}"))"
+echo -e "- Backup destination:    ${BACKUP_DIR:-$DEFAULT_BACKUP_DIR} (Absolute: $(realpath "${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"))"
+echo -e "- Logs directory:        $LOGS_DIR (Absolute: $(realpath "$LOGS_DIR"))"
+echo -e "- Test directory:        $TEST_DIR (Absolute: $(realpath "$TEST_DIR"))"
 
 # Check if projects exist in source directory
 if [ -d "${SOURCE_DIR:-$DEFAULT_SOURCE_DIR}" ]; then
@@ -93,12 +93,12 @@ case "$choice" in
                         sleep 1
                         "$SCRIPT_DIR/backup.sh" --dest "$custom_path" "$@"
                     else
-                        echo -e "\n${YELLOW}No path entered. Using default path.${NC}\n"
+                        echo -e "\n${YELLOW}No path entered. Using default path: ${GREEN}$DEFAULT_BACKUP_DIR${NC}\n"
                         sleep 1
                         "$SCRIPT_DIR/backup.sh" "$@"
                     fi
                 else
-                    echo -e "\n${GREEN}Using default backup path${NC}\n"
+                    echo -e "\n${GREEN}Using default backup path: ${YELLOW}$DEFAULT_BACKUP_DIR${NC}\n"
                     sleep 1
                     "$SCRIPT_DIR/backup.sh" "$@"
                 fi
