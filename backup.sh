@@ -489,12 +489,26 @@ for project_path in "${projects[@]}"; do
         
         SUCCESSFUL_PROJECTS=$((SUCCESSFUL_PROJECTS + 1))
     else
-        log "Failed to back up project: $project" "$LOG_FILE" "$SILENT_MODE"
+        # Record detailed error information
+        local error_details="Failed to back up project: $project (Path: $PROJECT_BACKUP_FILE)"
+        log "$error_details" "$LOG_FILE" "$SILENT_MODE"
         
         if [ "$SILENT_MODE" = false ]; then
             printf "\033[1A"
             print_dashboard_row "$project" "$FORMATTED_SRC_SIZE" "❌ FAILED"
+            # Show error details for interactive mode
+            echo -e "${RED}ERROR: Backup failed for $project${NC}"
+            echo -e "${YELLOW}File: $PROJECT_BACKUP_FILE${NC}"
         fi
+        
+        # Create a record of failed backups for easier troubleshooting
+        local failed_log="${LOGS_DIR}/failed_backups.log"
+        mkdir -p "$(dirname "$failed_log")"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - FAILED BACKUP: $project" >> "$failed_log"
+        echo "  Source: $PROJECT_SRC_PATH" >> "$failed_log"
+        echo "  Target: $PROJECT_BACKUP_FILE" >> "$failed_log"
+        echo "  Backup Time: $(date)" >> "$failed_log"
+        echo "--------------------------------------------------" >> "$failed_log"
         
         FAILED_PROJECTS=$((FAILED_PROJECTS + 1))
     fi
@@ -634,6 +648,19 @@ BACKUP_ENTRY+="  Projects: ${SUCCESSFUL_PROJECTS} succeeded, ${FAILED_PROJECTS} 
 BACKUP_ENTRY+="  Total Size: ${TOTAL_FORMATTED_SIZE}\n"
 BACKUP_ENTRY+="  Source: ${SOURCE_DIR}\n"
 BACKUP_ENTRY+="  Destination: ${FULL_BACKUP_PATH}\n"
+
+# Add more details for failed backups
+if [ "$FAILED_PROJECTS" -gt 0 ]; then
+    BACKUP_ENTRY+="  Failed Projects Log: ${LOGS_DIR}/failed_backups.log\n"
+    
+    # Add a summary of failed projects if available
+    if [ -f "${LOGS_DIR}/failed_backups.log" ]; then
+        BACKUP_ENTRY+="  Failed Projects Summary:\n"
+        RECENT_FAILURES=$(grep "FAILED BACKUP:" "${LOGS_DIR}/failed_backups.log" | tail -${FAILED_PROJECTS} | sed 's/.*FAILED BACKUP: /    - /')
+        BACKUP_ENTRY+="$RECENT_FAILURES\n"
+    fi
+fi
+
 BACKUP_ENTRY+="--------------------------------------------------\n\n"
 
 # Update history log in reverse chronological order
@@ -664,6 +691,13 @@ if [ "$SILENT_MODE" = true ]; then
         echo "BACKUP COMPLETED WITH ERRORS: $FAILED_PROJECTS failed, $SUCCESSFUL_PROJECTS succeeded"
         echo "Source: $SOURCE_DIR"
         echo "Destination: $FULL_BACKUP_PATH"
+        echo "Failed projects log: ${LOGS_DIR}/failed_backups.log"
+        
+        # List recent failed backups
+        if [ -f "${LOGS_DIR}/failed_backups.log" ]; then
+            echo "Recent failures:"
+            tail -n 20 "${LOGS_DIR}/failed_backups.log" | grep "FAILED BACKUP:" | cut -d':' -f2-
+        fi
     fi
 else
     if [ "$DRY_RUN" = true ]; then
@@ -671,6 +705,20 @@ else
         echo -e "${YELLOW}Would have backed up $SUCCESSFUL_PROJECTS projects, Estimated size $TOTAL_FORMATTED_SIZE${NC}"
         echo -e "${YELLOW}Source: ${GREEN}$SOURCE_DIR${NC}"
         echo -e "${YELLOW}Destination: ${GREEN}$FULL_BACKUP_PATH${NC}"
+    elif [ $FAILED_PROJECTS -gt 0 ]; then
+        echo -e "\n${RED}BACKUP COMPLETED WITH ERRORS: $FAILED_PROJECTS failed, $SUCCESSFUL_PROJECTS succeeded${NC}"
+        echo -e "${YELLOW}Path details:${NC}"
+        echo -e "  Source: ${GREEN}$SOURCE_DIR${NC}"
+        echo -e "  Destination: ${GREEN}$FULL_BACKUP_PATH${NC}"
+        echo -e "  Failed projects log: ${GREEN}${LOGS_DIR}/failed_backups.log${NC}"
+        
+        # Show failed backups details directly in the output
+        if [ -f "${LOGS_DIR}/failed_backups.log" ]; then
+            echo -e "\n${RED}Recent failures:${NC}"
+            tail -n 6 "${LOGS_DIR}/failed_backups.log" | grep -A3 "FAILED BACKUP:" | head -6 | sed 's/^/  /'
+            echo -e "\n${YELLOW}For complete list of failures, check:${NC}"
+            echo -e "  ${GREEN}less ${LOGS_DIR}/failed_backups.log${NC}"
+        fi
     fi
     echo -e "${CYAN}Finished at: $(date)${NC}\n"
     

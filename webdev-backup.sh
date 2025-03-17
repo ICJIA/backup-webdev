@@ -217,7 +217,7 @@ case "$choice" in
         <li><strong>Date:</strong> $backup_date</li>
         <li><strong>Projects:</strong> $projects_count</li>
         <li><strong>Total Size:</strong> $backup_size</li>
-        <li><strong>Location:</strong> $backup_location</li>
+        <li><strong>Location:</strong> <code>$backup_location</code></li>
     </ul>
     
     <hr>
@@ -229,8 +229,29 @@ $(grep -A2 "BACKUP: SUCCESS" "$BACKUP_HISTORY_LOG" | head -9)
     <hr>
     <h2>Failed Backups</h2>
     <pre>
-$(grep -A2 "BACKUP: FAILED\|BACKUP: PARTIAL" "$BACKUP_HISTORY_LOG" | head -6)
+$(if grep -q "BACKUP: FAILED\|BACKUP: PARTIAL" "$BACKUP_HISTORY_LOG"; then
+  echo "<strong>WARNING: Failed backups detected!</strong>"
+  echo ""
+  grep -A6 "BACKUP: FAILED\|BACKUP: PARTIAL" "$BACKUP_HISTORY_LOG" | head -16 | \
+    sed 's/Destination: \(.*\)/<strong>Full path:<\/strong> \1/'
+  
+  # Get a list of potential failed projects if available
+  if grep -q "failed" "$BACKUP_HISTORY_LOG"; then
+    echo ""
+    echo "<strong>Projects with errors:</strong>"
+    grep -B3 "failed," "$BACKUP_HISTORY_LOG" | grep "Projects:" | \
+      sed 's/Projects: \([0-9]*\) succeeded, \([0-9]*\) failed/\2 project(s) had errors/'
+  fi
+else
+  echo "No failed backups found in the history log."
+fi)
     </pre>
+    
+    <hr>
+    <h3>All Backup Locations (Most Recent First)</h3>
+    <ul>
+$(grep "Destination:" "$BACKUP_HISTORY_LOG" | head -10 | sed 's/.*Destination: \(.*\)/<li><code>\1<\/code><\/li>/')
+    </ul>
     
     <hr>
     <p>WebDev Backup Tool - Backup report</p>
@@ -288,10 +309,27 @@ EOL
                     echo "  Date:       $backup_date"
                     echo "  Projects:   $projects_count"
                     echo "  Total Size: $backup_size"
-                    echo "  Location:   $backup_location"
+                    echo -e "  Location:   ${GREEN}$backup_location${NC}"
                     echo "-------------------------------------"
                     echo "RECENT BACKUP HISTORY:"
                     grep -A2 "BACKUP: SUCCESS" "$BACKUP_HISTORY_LOG" | head -9 | sed 's/^/  /'
+                    echo "-------------------------------------"
+                    # Show failed backups with detailed information
+                    echo "FAILED BACKUPS:"
+                    if grep -q "BACKUP: FAILED\|BACKUP: PARTIAL" "$BACKUP_HISTORY_LOG"; then
+                        echo -e "  ${RED}WARNING: Failed backups detected!${NC}"
+                        echo
+                        grep -A6 "BACKUP: FAILED\|BACKUP: PARTIAL" "$BACKUP_HISTORY_LOG" | head -16 | \
+                          sed -E "s/^(.*(FAILED|PARTIAL).*)/${RED}\1${NC}/" | \
+                          sed -E "s/.*Destination: (.*)/${GREEN}  Full path: \1${NC}/" | \
+                          sed 's/^/  /'
+                    else
+                        echo "  No failed backups found in the history log."
+                    fi
+                    echo "-------------------------------------"
+                    echo "ALL BACKUP LOCATIONS (MOST RECENT FIRST):"
+                    grep "Destination:" "$BACKUP_HISTORY_LOG" | head -5 | \
+                      sed -E "s/.*Destination: (.*)/${GREEN}  \1${NC}/"
                     echo "-------------------------------------"
                 fi
             fi
