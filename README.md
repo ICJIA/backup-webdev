@@ -1,1256 +1,184 @@
 # WebDev Backup Tool
 
+A bash-based backup solution specifically designed for web development projects. It creates efficient, space-optimized backups while intelligently excluding resource-intensive directories like `node_modules`.
+
 ## Origin
 
-I built this series of bash scripts because I needed a reliable way to back up all my repositories from my local `/webdev/` directory. After losing work due to a hard drive failure, I realized I needed a backup solution (in addition to Github) that understood backing up a web development project - what files to include, what files to exclude. This app is my attempt to make regular local or external backups of my web projects.
-
-This safeguards local web development projects by creating efficient, space-optimized backups while intelligently handling common web development patterns like excluding the resource-intensive `node_modules` directories.
-
-With support for both local and cloud storage (including DigitalOcean Spaces, AWS S3, Google Drive, and Dropbox), incremental and differential backup strategies, and automated scheduling, WebDev-Backup Tool ensures that your code is protected against data loss, corrupted files, or accidental deletions.
-
-## Version 1.5.0
-
-The latest version includes several improvements:
-- Fixed tar command compatibility issues across different Linux/Unix distributions
-- Changed default backup directory to `./backups/` within the project folder
-- Added automatic cleanup of old backups (keeps 5 most recent by default)
-- Improved launcher menu with return-to-menu functionality
-- Enhanced cloud storage integration with DigitalOcean Spaces as the default provider
+This tool was built after losing work due to a hard drive failure. It provides a reliable way to back up repositories from a `/webdev/` directory, understanding what files to include and exclude in web development projects. It supports both local and cloud storage options.
 
 ## Features
 
-### Core Features
-
-- **Smart Project Selection**: Choose which projects to backup (defaults to all)
+- **Smart Project Selection**: Choose which projects to backup
 - **Node Modules Exclusion**: Automatically excludes `node_modules` directories to save space
-- **Individual Project Compression**: Each project is compressed into a separate .tar.gz file
-- **Interactive Dashboard**: Real-time progress display with project sizes and compression ratios
-- **Silent Mode**: Can run without interaction for cron jobs or automated backups
-- **Comprehensive Logging**: Detailed logs with statistics and backup history
-- **Test Mode**: Test all functionality without performing actual backups
-- **Auto-discovery**: Automatically detects source directory based on installation location
-- **Custom Paths**: Specify custom source and destination directories with command-line options
-- **Robust Error Handling**: Early detection of permission and filesystem issues
-- **Detailed Diagnostics**: Clear error messages with specific failure reasons
-
-### Advanced Backup Options
-
+- **Local and Cloud Storage**: Back up locally or to cloud providers (DigitalOcean Spaces, AWS S3, Google Drive, Dropbox)
 - **Incremental Backups**: Only back up files that have changed since the last backup
-- **Differential Backups**: Only back up files that have changed since the last full backup
-- **Custom Compression Levels**: Adjust compression ratio for space/speed tradeoffs (1-9)
-- **Backup Verification**: Automatically verify integrity of backups after creation
-- **Parallel Compression**: Use multiple threads for faster compression (with pigz)
+- **Interactive Dashboard**: Real-time progress display with project sizes
+- **Automated Scheduling**: Configure recurring backups with cron
+- **Restore Capabilities**: Easily restore complete backups or specific files
 
-### Cloud Integration
+## ⚡️ Quick Run
 
-- **Cloud Storage Upload**: Automatically upload backups to cloud providers:
-  - DigitalOcean Spaces (default)
-  - Amazon S3 (AWS)
-  - Google Drive
-  - Dropbox
-- **Bandwidth Limiting**: Control upload speeds to avoid network saturation
-- **Multi-Location Backups**: Store backups in multiple locations for redundancy
-
-### Reporting and Notifications
-
-- **Email Notifications**: Get automated email reports after backups complete
-- **HTML Reports**: Detailed HTML backup reports with project statistics
-- **Visual Dashboard**: Web-based dashboard with charts and statistics
-- **Backup Size Forecasting**: Predict future backup sizes based on trends
-- **Storage Usage Visualization**: Graphical representation of backup history
-
-### Restore Capabilities
-
-- **One-Click Restore**: Easily restore entire backups
-- **Selective Restore**: Restore specific projects or files
-- **Point-in-Time Recovery**: Restore from any backup point
-- **Backup Integrity Testing**: Verify backups without actually restoring
-- **Restore Preview**: See what would be restored before executing
-
-## Installation and Setup Guide
-
-### Basic Installation
-
-1. Clone this repository to your local machine:
+1. **Setup**:
 
    ```bash
+   # Clone the repository
    git clone https://github.com/yourusername/webdev-backup.git
    cd webdev-backup
-   ```
 
-2. Make all scripts executable:
-
-   ```bash
-   chmod +x *.sh
-   ```
-
-3. Create your credentials file for cloud storage and email notifications:
-
-   ```bash
-   cp secrets.sh.example secrets.sh
-   ```
-
-4. Edit your credentials file with your preferred text editor:
-   ```bash
-   nano secrets.sh   # or vim, code, etc.
-   ```
-
-The tool is designed to be completely self-contained. All backups are stored in the `./backups/` directory within the project folder by default, making it easy to move or manage your backup system as a single unit.
-
-### ⚡️ Quick Run (TL;DR)
-
-Just want to back up your web projects right away? Here's how:
-
-1. **Set storage locations and credentials**:
-   ```bash
-   # For external storage credentials
-   nano secrets.sh
-   
-   # For local backup location
-   nano config.sh
-   ```
-   Two important settings to update:
-   - For **local storage**: Use the default `./backups/` directory within the project, or update `DEFAULT_BACKUP_DIR` in config.sh to your preferred location
-   - For **external storage**: Add your DigitalOcean credentials in secrets.sh
-
-2. **Run the tool**:
-   ```bash
    # Make scripts executable
    chmod +x *.sh
 
-   # Run the launcher (recommended for first time)
+   # Copy and edit the secrets template for cloud storage
+   cp secrets.sh.example secrets.sh
+   nano secrets.sh
+   ```
+
+2. **Run**:
+
+   ```bash
+   # Interactive launcher (recommended for first use)
    ./webdev-backup.sh
 
-   # Or run a backup directly (defaults to local storage)
+   # Direct backup to local storage
    ./backup.sh
 
-   # Or run a cloud backup to DigitalOcean Spaces
+   # Direct backup to cloud (requires configured secrets.sh)
    ./backup.sh --external
    ```
 
-That's it! The tool will automatically detect your web projects and back them up, excluding `node_modules` directories.
+That's it! The tool will automatically:
 
-The default backup location is set to `./backups/` within the project directory and will be created automatically if it doesn't exist. You can customize this location in config.sh if you prefer a different path.
+- Detect your web projects
+- Exclude `node_modules` directories
+- Create compressed backups in `./backups/` (created automatically)
 
-### Sample Outputs
+## Installation
 
-Here's what you'll see when running the tool:
+### Basic Configuration
 
-#### Interactive Launcher Menu
-```
-===============================================
-|          WebDev Backup Tool v1.6.0         |
-===============================================
-A robust backup solution for web development projects
-Current date: 2025-03-17 14:35:21
-
-Current Configuration:
-- Source directory:      /home/user/webdev
-- Backup destination:    ./backups  # Default location (created automatically if needed)
-- Logs directory:        /home/user/backup-webdev/logs
-- Test directory:        /home/user/backup-webdev/test
-- Projects found:        5
-
-Last backup: 2025-03-17 09:15:23
-
-Select an option:
-1) Run Backup (Interactive Mode)
-2) Run Comprehensive Tests
-3) Run Cleanup Tool
-4) Restore Backups
-5) View Backup Dashboard
-6) View Project Documentation
-7) View Backup History
-8) Configure Automated Backups (Cron)
-9) Advanced Options
-q) Quit
-
-Enter your choice [1-9/q]:
-```
-
-#### Backup Dashboard (Internal Storage)
-```
-+------------------------------------------------------------------------------+
-| BACKUP DASHBOARD - 2025-03-17 14:37:45                                       |
-+------------------------------------------------------------------------------+
-| PROJECT NAME                             | SIZE       | STATUS                |
-+------------------------------------------------------------------------------+
-| my-react-app                             | 105.7 MB   | COMPRESSING...        |
-| my-react-app                             | 4.8 MB     | ✓ DONE (22.0x)        |
-| nodejs-api                               | 75.2 MB    | COMPRESSING...        |
-| nodejs-api                               | 3.1 MB     | ✓ DONE (24.2x)        |
-| portfolio-site                           | 55.3 MB    | COMPRESSING...        |
-| portfolio-site                           | 2.5 MB     | ✓ DONE (22.1x)        |
-+------------------------------------------------------------------------------+
-| TOTAL                                    | 10.4 MB    | COMPLETED             |
-+------------------------------------------------------------------------------+
-
-Backup Type: Full
-Compression Level: 6
-Storage: INTERNAL (local storage)
-Note: Each project's node_modules directory will be excluded
-
-===== Backup Summary =====
-- Projects processed: 3
-- Successfully backed up: 3
-- Failed backups: 0
-- Total source size: 236.2 MB
-- Total backup size: 10.4 MB
-- Overall compression ratio: 22.7x
-- Backup location: ./backups/webdev_backup_2025-03-17_14-37-45
-- Storage type: INTERNAL (local storage)
-- Completed at: 2025-03-17 14:38:27
-
-Return to launcher menu? [Y/n]:
-```
-
-#### External Backup to DigitalOcean Spaces
-```
-+------------------------------------------------------------------------------+
-| BACKUP DASHBOARD - 2025-03-17 14:40:12                                       |
-+------------------------------------------------------------------------------+
-| PROJECT NAME                             | SIZE       | STATUS                |
-+------------------------------------------------------------------------------+
-| my-react-app                             | 105.7 MB   | COMPRESSING...        |
-| my-react-app                             | 4.8 MB     | ✓ DONE (22.0x)        |
-| my-react-app                             | 4.8 MB     | UPLOADING...          |
-| my-react-app                             | 4.8 MB     | ✓ UPLOADED (22.0x)    |
-| nodejs-api                               | 75.2 MB    | COMPRESSING...        |
-| nodejs-api                               | 3.1 MB     | ✓ DONE (24.2x)        |
-| nodejs-api                               | 3.1 MB     | UPLOADING...          |
-| nodejs-api                               | 3.1 MB     | ✓ UPLOADED (24.2x)    |
-+------------------------------------------------------------------------------+
-| TOTAL                                    | 7.9 MB     | COMPLETED             |
-+------------------------------------------------------------------------------+
-
-Backup Type: Full
-Compression Level: 6
-Storage: EXTERNAL (do cloud provider)
-Note: Each project's node_modules directory will be excluded
-
-===== Backup Summary =====
-- Projects processed: 2
-- Successfully backed up: 2
-- Failed backups: 0
-- Total source size: 180.9 MB
-- Total backup size: 7.9 MB
-- Overall compression ratio: 22.9x
-- Backup location: ./backups/webdev_backup_2025-03-17_14-40-12
-- Storage type: EXTERNAL (do cloud provider)
-- Completed at: 2025-03-17 14:41:30
-
-Return to launcher menu? [Y/n]:
-```
-
-#### HTML Dashboard View
-```
-Visual dashboard available at: ./backups/webdev_backup_2025-03-17_14-40-12/dashboard.html
-```
-
-The HTML dashboard provides interactive charts and statistics:
-
-![Dashboard Screenshot](https://example.com/dashboard-screenshot.png)
-
-Key dashboard features:
-- Backup size trends over time
-- Compression ratio comparisons
-- Project growth visualization
-- Storage usage forecasting
-- Interactive reports with filtering options
-
-#### Backup History View
-```
-===== Backup History =====
-
-2025-03-17 14:40:12 - BACKUP: SUCCESS
-  Type: Full
-  Storage: EXTERNAL (do)
-  Projects: 2 succeeded, 0 failed
-  Total Size: 7.9 MB
-  Source: /home/user/webdev
-  Destination: ./backups/webdev_backup_2025-03-17_14-40-12
---------------------------------------------------
-
-2025-03-17 09:15:23 - BACKUP: SUCCESS
-  Type: Full
-  Storage: INTERNAL
-  Projects: 5 succeeded, 0 failed
-  Total Size: 15.2 MB
-  Source: /home/user/webdev
-  Destination: ./backups/webdev_backup_2025-03-17_09-15-23
---------------------------------------------------
-
-2025-03-16 18:22:05 - BACKUP: SUCCESS
-  Type: Incremental
-  Storage: INTERNAL
-  Projects: 2 succeeded, 0 failed
-  Total Size: 2.8 MB
-  Source: /home/user/webdev
-  Destination: ./backups/webdev_backup_2025-03-16_18-22-05
---------------------------------------------------
-```
-
-Want more details? Continue reading for cloud setup and advanced options.
+- **Local storage**: By default, backups are stored in `./backups/` within the project directory
+- **External storage**: Configure cloud provider credentials in `secrets.sh`
+- **Source directory**: Automatically detected, or specify with `--source` option
 
 ### Cloud Storage Setup
 
-For DigitalOcean Spaces (recommended external storage):
+For DigitalOcean Spaces (recommended):
 
 1. Create a Spaces bucket in your DigitalOcean account
-2. Generate API credentials from the "API" section in your DigitalOcean dashboard
-3. Add your credentials to the `secrets.sh` file:
-
+2. Generate API credentials in your DigitalOcean dashboard
+3. Add to `secrets.sh`:
    ```bash
-   DO_SPACES_KEY="your-digitalocean-spaces-key"
-   DO_SPACES_SECRET="your-digitalocean-spaces-secret"
-   DO_SPACES_ENDPOINT="nyc3.digitaloceanspaces.com"  # Change region if needed
-   DO_SPACES_BUCKET="your-spaces-bucket"
-   DO_SPACES_REGION="nyc3"  # Change region if needed
+   DO_SPACES_KEY="your-key"
+   DO_SPACES_SECRET="your-secret"
+   DO_SPACES_ENDPOINT="nyc3.digitaloceanspaces.com"
+   DO_SPACES_BUCKET="your-bucket"
+   DO_SPACES_REGION="nyc3"
    ```
-
-4. Install the AWS CLI (required for DigitalOcean Spaces integration):
-
-   ```bash
-   # For Debian/Ubuntu
-   sudo apt update && sudo apt install -y awscli
-
-   # For Red Hat/CentOS/Fedora
-   sudo yum install -y awscli
-
-   # For macOS with Homebrew
-   brew install awscli
-   ```
-
-### Additional Cloud Provider Setup
-
-For AWS S3:
-
-1. Create an S3 bucket in your AWS account
-2. Create IAM credentials with appropriate S3 access
-3. Add your AWS credentials to the `secrets.sh` file
-
-For Google Drive:
-
-1. Create a Google Cloud project and enable the Drive API
-2. Create OAuth credentials and download the client configuration
-3. Add your Google Drive credentials to the `secrets.sh` file
-4. Install the gdrive CLI tool
-
-For Dropbox:
-
-1. Create a Dropbox app in the Dropbox developer portal
-2. Generate an access token
-3. Add your Dropbox token to the `secrets.sh` file
-4. Install the dropbox-uploader script
-
-### Email Notification Setup
-
-To enable email notifications:
-
-1. Add your SMTP server details to the `secrets.sh` file:
-
-   ```bash
-   EMAIL_SMTP_SERVER="smtp.example.com"
-   EMAIL_SMTP_PORT="587"
-   EMAIL_USERNAME="your-username@example.com"
-   EMAIL_PASSWORD="your-email-password"
-   EMAIL_FROM="backups@example.com"
-   ```
-
-2. Install the required mail utilities:
-   ```bash
-   # For Debian/Ubuntu
-   sudo apt update && sudo apt install -y mailutils
-   ```
-
-### Directory Configuration
-
-By default, backups are stored in a `./backups/` directory within the project folder. This directory will be created automatically if it doesn't exist. You can change this location if needed.
-
-The script automatically detects the source directory:
-
-- It looks for a "webdev" directory one level up from where the script is located
-- If not found, it uses the parent directory of where the script is located
-- You can always override this with the `--source` option
-
-To view the current default paths:
-
-```bash
-./backup.sh --help
-```
-
-To customize paths permanently, edit the `config.sh` file:
-
-```bash
-# Edit DEFAULT_SOURCE_DIR and DEFAULT_BACKUP_DIR in config.sh
-nano config.sh
-```
-
-Example of customizing the backup location:
-```bash
-# Inside config.sh change this:
-DEFAULT_BACKUP_DIR="$SCRIPT_DIR/backups"
-
-# To a different location if needed:
-DEFAULT_BACKUP_DIR="/home/yourusername/my-custom-backups"
-```
-
-### Quick Start Guide
-
-After installation, you can quickly get started with these commands:
-
-1. **Run the interactive launcher** (recommended for first-time users):
-
-   ```bash
-   ./webdev-backup.sh
-   ```
-
-   This will guide you through all available options, including internal/external backup.
-
-2. **Run a direct backup** with default settings:
-
-   ```bash
-   ./backup.sh
-   ```
-
-   This performs an internal backup to your local filesystem.
-
-3. **Run an external backup** to DigitalOcean Spaces:
-
-   ```bash
-   ./backup.sh --external
-   ```
-
-   Requires setting up your credentials in `secrets.sh` first.
-
-4. **Test the system** without actually creating backups:
-   ```bash
-   ./run-tests.sh
-   ```
-   This confirms all functionality is working correctly.
-
-### Backing Up Your Web Development Projects
-
-This tool was specifically created to back up web development projects typically found in a `/webdev/` directory structure. For example:
-
-```
-/webdev/
-├── client-project-1/        # React frontend for Client 1
-├── client-project-2/        # Next.js application for Client 2
-├── personal-blog/           # Gatsby blog
-├── portfolio-site/          # Vue.js personal portfolio
-├── nodejs-api/              # Express API server
-└── wordpress-theme/         # Custom WordPress theme
-```
-
-The tool will:
-
-1. Automatically detect your project directories
-2. Intelligently exclude `node_modules` and other large, regenerable directories
-3. Create compressed archives for each project
-4. Store them either locally or in the cloud (DigitalOcean Spaces recommended)
-
-You can back up everything with a single command, or choose specific projects to include or exclude. This is perfect for preserving your code while avoiding the waste of backing up dependencies that can be reinstalled with `npm install`.
-
-### Recommended Workflow for First-Time Setup
-
-1. Set up your credentials in `secrets.sh`
-2. Run `./test-backup.sh` to verify your configuration
-3. Make a test backup with `./backup.sh --dry-run`
-4. Configure automated backups with `./configure-cron.sh`
-5. Create your first real backup with `./webdev-backup.sh`
+4. Install AWS CLI: `sudo apt install -y awscli` (or equivalent)
 
 ## Usage
 
-### Using the Interactive Launcher
-
-The easiest way to use the WebDev Backup Tool is through the interactive launcher:
+### Interactive Launcher
 
 ```bash
 ./webdev-backup.sh
 ```
 
-This will display a menu with the following options:
+This displays a menu with options:
 
-1. **Run Backup (Interactive Mode)** - Run the main backup process
-2. **Run Comprehensive Tests** - Execute all tests to verify functionality
-3. **Run Cleanup Tool** - Clean up logs and temporary files
-4. **Restore Backups** - Restore files from previous backups
-5. **View Backup Dashboard** - See visual backup statistics and trends
-6. **View Project Documentation** - Display this README file
-7. **View Backup History** - Show history of previous backups
-8. **Configure Automated Backups (Cron)** - Set up scheduled automated backups
-9. **Advanced Options** - Access additional backup modes and settings
+- Run Backup (Internal/External)
+- Run Tests
+- Configure Automated Backups
+- View Backup History
+- And more...
 
-The launcher automatically displays your current configuration and last backup date.
-
-#### Internal vs External Backup
-
-When you select "Run Backup" from the menu, you'll be prompted to choose between:
-
-1. **Internal Backup**: Stores backups locally on your system
-
-   - Fast and convenient for quick backups
-   - Uses your local filesystem at the configured destination path
-   - No Internet connection required
-   - Good for daily development backups
-   - Example command: `./backup.sh` or `./webdev-backup.sh` and select option 1
-
-2. **External Backup**: Stores backups in the cloud
-   - By default uses DigitalOcean Spaces for reliable cloud storage
-   - Also supports AWS S3, Google Drive, and Dropbox
-   - Provides off-site backup for disaster recovery
-   - Requires proper credentials in your `secrets.sh` file
-   - Ideal for important milestones and long-term storage
-   - Additional protection against hardware failures, theft, or disasters
-   - Example command: `./backup.sh --external` or `./webdev-backup.sh` and select option 2
-
-The dashboard and backup reports will clearly indicate whether a backup is internal or external. You can see this information in:
-
-- The real-time dashboard during backup
-- The backup summary displayed on completion
-- The backup history log (`logs/backup_history.log`)
-- The JSON metadata file in each backup directory
-
-##### When to Use Internal vs External Backups
-
-**Use Internal Backups for:**
-
-- Daily development work
-- Quick iterations and frequent checkpoints
-- When you need the fastest backup/restore time
-- When you have limited internet connectivity
-
-**Use External Backups for:**
-
-- Major project milestones or releases
-- End-of-week or end-of-sprint backups
-- When working with particularly valuable or irreplaceable code
-- Implementing a 3-2-1 backup strategy (3 copies, 2 different media, 1 off-site)
-
-Both backup types use the same compression and organization format, making it easy to switch between them based on your needs.
-
-### Silent Mode with Launcher
-
-If you want to run in silent mode, simply add the `--silent` flag:
+### Direct Commands
 
 ```bash
-./webdev-backup.sh --silent
-```
-
-This will bypass the menu and run the backup directly in silent mode, making it suitable for cron jobs.
-
-### Getting Help
-
-You can view all available options by using the help flag:
-
-```bash
-./backup.sh --help
-```
-
-This displays usage information, available options, and examples.
-
-### Interactive Mode
-
-Run the backup script with no arguments for interactive mode:
-
-```bash
+# Local backup
 ./backup.sh
-```
 
-This will display:
-
-- List of available projects
-- Option to exclude specific projects
-- Real-time progress dashboard
-- Detailed backup statistics
-
-### Silent Mode (for cron jobs)
-
-Run with the `--silent` flag for non-interactive operation:
-
-```bash
-./backup.sh --silent
-```
-
-This mode:
-
-- Backs up all projects without user interaction
-- Only outputs success/failure messages
-- Still logs everything to the history file
-- Perfect for scheduled backups with cron
-
-### Custom Source and Destination Paths
-
-You can specify a custom source directory with the `--source` (or `-s`) flag:
-
-```bash
-./backup.sh --source /path/to/custom/source
-```
-
-You can specify a custom backup destination with the `--destination` (or `-d`) flag:
-
-```bash
-./backup.sh --destination /path/to/custom/backup/location
-```
-
-You can combine these options with each other and with silent mode:
-
-```bash
-./backup.sh --silent --source /path/to/src --destination /path/to/backup
-```
-
-The script will:
-
-- Validate that the source directory exists
-- Create the destination directory if it doesn't exist
-- Use the specified paths instead of the defaults
-- Still organize backups by date within the destination
-
-### Advanced Backup Options
-
-The backup script supports several advanced options for flexibility and performance:
-
-#### Backup Types
-
-```bash
-# Only back up files changed since last backup
-./backup.sh --incremental
-
-# Only back up files changed since last full backup
-./backup.sh --differential
-```
-
-#### Compression and Performance
-
-```bash
-# Set compression level (1-9, default is 6)
-./backup.sh --compression 9  # Maximum compression
-
-# Use parallel compression with multiple threads
-./backup.sh --parallel 4     # Use 4 threads for compression
-
-# Verify backup integrity after completion
-./backup.sh --verify
-```
-
-#### Cloud Integration
-
-WebDev Backup Tool supports multiple cloud storage providers, with DigitalOcean Spaces being the recommended and default option for external backups. The tool uses native APIs or CLI tools to securely upload your backups to your chosen cloud provider.
-
-```bash
-# Quick way to use external backup (uses DigitalOcean Spaces by default)
+# Cloud backup
 ./backup.sh --external
 
-# Upload backup to specific cloud storage
-./backup.sh --cloud do       # Upload to DigitalOcean Spaces (recommended)
-./backup.sh --cloud aws      # Upload to Amazon S3
-./backup.sh --cloud gdrive   # Upload to Google Drive
-./backup.sh --cloud dropbox  # Upload to Dropbox
+# Specify source and destination
+./backup.sh --source /path/to/webdev --destination /path/to/backups
 
-# Limit bandwidth usage (in KB/s)
-./backup.sh --cloud do --bandwidth 1024  # Limit to 1MB/s
-```
+# Silent mode (for cron jobs)
+./backup.sh --silent
 
-##### DigitalOcean Spaces Advantages
+# Incremental backup
+./backup.sh --incremental
 
-DigitalOcean Spaces is recommended as the primary cloud storage provider for several reasons:
-
-- **S3-compatible API**: Uses the familiar AWS S3 API but with simpler pricing
-- **Cost-effective**: Fixed, predictable pricing for storage and bandwidth
-- **Global CDN**: Easy integration with DigitalOcean's CDN for fast downloads
-- **Simple setup**: Straightforward credential management and bucket creation
-- **Regional storage**: Multiple regions available for compliance or performance needs
-
-To use DigitalOcean Spaces, make sure your `secrets.sh` file is correctly configured with your Spaces credentials. See the [Installation and Setup Guide](#installation-and-setup-guide) section for details.
-
-Example credentials configuration:
-
-```bash
-DO_SPACES_KEY="your-access-key"
-DO_SPACES_SECRET="your-secret-key"
-DO_SPACES_ENDPOINT="nyc3.digitaloceanspaces.com"
-DO_SPACES_BUCKET="my-webdev-backups"
-DO_SPACES_REGION="nyc3"
-```
-
-#### Notifications
-
-```bash
-# Send email notification after backup completes
-./backup.sh --email user@example.com
-```
-
-### Restore Functionality
-
-The restore script provides easy recovery options:
-
-```bash
-# List available backups
-./restore.sh --list
-
-# Restore the latest backup (interactive mode)
-./restore.sh
-
-# Restore a specific backup by date
-./restore.sh --backup-date 2025-03-15_14-30-00
-
-# Restore just a specific project
-./restore.sh --project myproject
-
-# Restore a specific file from a project
-./restore.sh --project myproject --file src/index.js
-
-# Test restore without actually extracting files
-./restore.sh --test
-
-# Preview what would be restored without doing it
-./restore.sh --dry-run
-```
-
-### Testing the Backup Process
-
-#### Running All Tests
-
-To run a comprehensive test suite with a single command:
-
-```bash
+# Test functionality
 ./run-tests.sh
 ```
 
-This runs all tests for the application and provides:
+### Internal vs External Backup
 
-- Color-coded success/failure indicators
-- Detailed test logs
-- Proper exit codes for CI/CD integration
-- Test history in reverse chronological order
-- Coverage of all utilities including backup, test, and cleanup tools
-- Dry-run tests for cleanup functionality (no files are deleted)
+**Internal Backup**: Stores backups locally on your system
 
-#### Running Specific Tests
+- Fast and convenient
+- No internet connection required
+- Good for daily development backups
+- Command: `./backup.sh`
 
-To test only the backup functionality without actually moving files:
+**External Backup**: Stores backups in the cloud
 
-```bash
-./test-backup.sh
-```
-
-The test script:
-
-- Verifies all system requirements
-- Tests the compression process
-- Validates compressed file integrity
-- Generates detailed test logs
-
-## Logs and Output
-
-- **Backup History**: All backups are logged to `logs/backup_history.log`
-- **Test History**: All tests are logged to `test/test_history.log`
-- **Individual Backup Logs**: Each backup creates its own detailed log file
-
-## Directory Structure
-
-```
-backup-webdev/
-├── backup.sh           # Main backup script
-├── test-backup.sh      # Test script for validating functionality
-├── test-cron.sh        # Test script for cron functionality
-├── run-tests.sh        # Comprehensive test suite runner
-├── cleanup.sh          # Cleanup utility for logs and verifying setup
-├── restore.sh          # Restore utility for recovering backups
-├── configure-cron.sh   # Cron job configuration utility
-├── webdev-backup.sh    # Interactive launcher for all functionality
-├── config.sh           # Shared configuration for all scripts
-├── utils.sh            # Shared utility functions
-├── ui.sh               # User interface functions
-├── fs.sh               # Filesystem operation functions
-├── reporting.sh        # Reporting and visualization functions
-├── secrets.sh.example  # Template for secure credential storage
-├── LICENSE             # MIT license
-├── README.md           # Main documentation
-├── logs/               # Backup logs directory
-│   ├── .gitkeep        # Placeholder to maintain directory in git
-│   ├── README.md       # Logs directory documentation
-│   ├── backup_history.log # Backup history log
-│   ├── restore_history.log # Restore history log
-│   └── *.log           # Log files (ignored by git)
-└── test/               # Test directory
-    ├── .gitkeep        # Placeholder to maintain directory in git
-    ├── README.md       # Test directory documentation
-    ├── test_history.log # Test log (kept locally, ignored by git)
-    ├── test_run_*.log  # Comprehensive test run logs
-    ├── cron_test_*     # Cron test directories
-    └── webdev_test_*   # Test backup directories (ignored by git)
-```
-
-## Error Handling
-
-The script performs several validations before starting the backup process:
-
-1. **Source Directory Validation**:
-
-   - Verifies the source directory exists
-   - Ensures there are projects to backup
-
-2. **Destination Directory Validation**:
-   - Checks if the backup directory exists and creates it if needed
-   - Verifies write permissions on the backup directory
-   - Tests filesystem write capability with a temporary file
-3. **Backup Process Validation**:
-   - Validates compression tools availability
-   - Monitors backup success and failures
-   - Provides detailed error messages for each failure point
+- Uses DigitalOcean Spaces (or other configured provider)
+- Provides off-site backup for disaster recovery
+- Requires configured credentials
+- Command: `./backup.sh --external`
 
 ## Automated Backups
 
-### Using the Cron Configuration Utility
-
-The easiest way to set up automated backups is to use the built-in cron configuration utility:
+Set up recurring backups with:
 
 ```bash
 ./configure-cron.sh
 ```
 
-Or select "Configure Automated Backups (Cron)" from the main launcher menu.
+Or select the option from the launcher menu.
 
-This utility provides a user-friendly interface to:
-
-1. **Enable automatic backups** with a default schedule (every 72 hours)
-2. **Change backup frequency** with options for:
-   - Every 3, 6, 12, 24, or 72 hours
-   - Weekly (Sunday at midnight)
-   - Monthly (1st day of month)
-   - Custom schedule (using standard crontab format)
-3. **Customize backup options** such as:
-   - Incremental or differential backups
-   - Backup verification
-   - Email notifications
-   - Cloud storage integration
-4. **Disable automated backups** when no longer needed
-5. **View upcoming backup times** based on your schedule
-
-The utility automatically configures your crontab without you having to remember cron syntax.
-
-### Testing Cron Functionality
-
-To test the cron functionality without modifying your actual crontab, use the cron test script:
+## Restore Functionality
 
 ```bash
-./test-cron.sh
+# List available backups
+./restore.sh --list
+
+# Restore the latest backup
+./restore.sh
+
+# Restore a specific project
+./restore.sh --project myproject
 ```
-
-Or run the comprehensive test suite which includes cron tests:
-
-```bash
-./run-tests.sh
-```
-
-These tests:
-
-- Verify that cron configuration would work correctly
-- Simulate creating, modifying, and removing cron jobs
-- Test all cron features in a safe, dry-run mode
-- Log all results for validation
-
-### Cron Tips and Best Practices
-
-#### 1. Frequency Selection Tips
-
-- **For active development**: Every 24 hours (daily) is recommended
-- **For less active projects**: Every 72 hours (3 days) is a good balance
-- **For long-term archiving**: Weekly or monthly backups are sufficient
-
-#### 2. Dealing with Sleep/Shutdown
-
-If your computer isn't always on:
-
-- Consider using `anacron` instead of `cron` for workstations that aren't always powered on
-- For laptops, prefer schedules that run early in the day when the computer is likely to be on
-- Use the `@reboot` schedule to run a backup after each system restart
-
-#### 3. Email Notification Setup
-
-When configuring email notifications for cron jobs:
-
-- Ensure `mail` or `mailx` is installed on your system
-- Test the email notification manually before enabling in cron
-- Consider using the `--verify` option together with `--email` to get notified of backup integrity
-
-#### 4. Resource Usage Considerations
-
-To minimize impact on system performance:
-
-- Use the `nice` command to lower the backup process priority
-- Schedule backups during off-hours when the system is less busy
-- Limit bandwidth usage with the `--bandwidth` option for cloud backups
-
-Example of a nice'd cron job:
-
-```bash
-# Run at 2 AM with reduced priority
-0 2 * * * nice -n 19 /path/to/backup-webdev/webdev-backup.sh --silent
-```
-
-#### 5. Logging and Monitoring
-
-For effective monitoring of automated backups:
-
-- Check the `logs/backup_history.log` file regularly
-- Consider setting up log rotation for long-term use
-- Use the `View Backup History` option in the launcher to review past runs
-
-### Manual Crontab Configuration
-
-If you prefer to manually configure crontab, you can use the following examples:
-
-```bash
-# Every 72 hours (default)
-0 */72 * * * /path/to/backup-webdev/webdev-backup.sh --silent
-
-# Daily at midnight
-0 0 * * * /path/to/backup-webdev/webdev-backup.sh --silent
-
-# Weekly on Sunday at midnight
-0 0 * * 0 /path/to/backup-webdev/webdev-backup.sh --silent
-
-# With custom options
-0 0 * * * /path/to/backup-webdev/webdev-backup.sh --silent --incremental --email admin@example.com
-
-# Advanced: Combined incremental (daily) and full (weekly) backups
-# Run incremental backup daily
-0 0 1-6 * * /path/to/backup-webdev/webdev-backup.sh --silent --incremental
-# Run full backup on Sunday
-0 0 0 * * /path/to/backup-webdev/webdev-backup.sh --silent
-```
-
-#### Crontab Syntax Reference
-
-```
-┌───────────── minute (0 - 59)
-│ ┌───────────── hour (0 - 23)
-│ │ ┌───────────── day of the month (1 - 31)
-│ │ │ ┌───────────── month (1 - 12)
-│ │ │ │ ┌───────────── day of the week (0 - 6) (Sunday to Saturday)
-│ │ │ │ │
-│ │ │ │ │
-│ │ │ │ │
-* * * * * command to execute
-```
-
-Common crontab patterns:
-
-- `*/5 * * * *` - Every 5 minutes
-- `0 * * * *` - Every hour at minute 0
-- `0 */12 * * *` - Every 12 hours
-- `0 0 * * *` - Every day at midnight
-- `0 0 * * 0` - Every Sunday at midnight
-- `0 0 1 * *` - First day of every month at midnight
-- `@reboot` - Run once after system reboot
-
-It's recommended to test the command manually with `--silent` first to ensure it works as expected.
 
 ## Maintenance
 
-### Cleanup Utility
-
-The project includes a cleanup utility for maintaining the backup tool:
+Use the cleanup utility to manage backup storage:
 
 ```bash
-./cleanup.sh [OPTIONS]
-```
-
-Options:
-
-- `--backup-logs`: Backup logs before removing them
-- `--all-logs`: Remove all logs (default: keeps last 5 runs)
-- `--days N`: Remove logs older than N days
-- `--source DIR`: Use custom source directory
-- `--target DIR`: Use custom backup target directory
-- `--yes`: Skip confirmation prompts
-- `--dry-run`: Show what would be done without doing it
-
-Examples:
-
-```bash
-# Standard cleanup (keeps 5 most recent logs and backups)
+# Standard cleanup (keeps 5 most recent backups)
 ./cleanup.sh
-
-# Remove all logs
-./cleanup.sh --all-logs
 
 # Remove logs older than 30 days
 ./cleanup.sh --days 30
-
-# Backup logs before removing
-./cleanup.sh --backup-logs --all-logs
-
-# Simulate cleanup without making changes
-./cleanup.sh --dry-run
 ```
-
-The cleanup script:
-
-1. Verifies source directory existence
-2. Verifies backup destination accessibility
-3. Tests target volume write permission
-4. Asks for confirmation before deleting each file (defaults to Yes)
-5. Cleans up log files based on specified options
-6. **Manages backup directories** (keeps 5 most recent backups)
-7. Verifies script permissions
-8. Creates any missing directories
-
-### Modular Architecture
-
-The project is built with a modular architecture that separates functionality into specialized components:
-
-- **config.sh**: Central configuration for paths and global settings
-- **utils.sh**: Common utility functions used across all scripts
-- **ui.sh**: User interface functions for interactive display
-- **fs.sh**: Filesystem operations including backup, restore, and cloud operations
-- **reporting.sh**: Reporting and visualization functions
-
-This modular design provides several benefits:
-
-- Easier maintenance and updates
-- Consistent behavior across all tools
-- Reduced code duplication
-- Better organized codebase
-- Simpler addition of new features
-
-Any changes to common functionality should be made in the appropriate module to ensure all tools benefit from the improvements.
-
-### API Keys and Secrets
-
-The project supports secure storage of API keys and sensitive information:
-
-1. Create a copy of the example secrets file:
-
-   ```bash
-   cp secrets.sh.example secrets.sh
-   ```
-
-2. Edit the secrets.sh file to add your API keys and credentials:
-
-   ```bash
-   nano secrets.sh
-   ```
-
-3. The secrets.sh file is automatically gitignored to prevent accidental exposure.
-
-Available secret types:
-
-- Email SMTP credentials for notifications
-- AWS S3 access keys for cloud backups
-- Google Drive OAuth credentials
-- Dropbox access tokens
-
-Your API keys and sensitive information will be automatically loaded when running any script, but will never be committed to version control.
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### General Issues
+- **"Source directory does not exist"**: Verify path or use `--source`
+- **"Cannot write to backup directory"**: Check permissions
+- **"Failed to upload to cloud"**: Verify credentials in `secrets.sh`
 
-- **"Source directory does not exist"**: Verify the source path or specify a custom one with `--source`
-- **"Cannot write to backup directory"**: Check permissions on the destination directory
-- **"Failed to create backup directory"**: Ensure the parent directory exists and has write permissions
-- **"Filesystem may be read-only or full"**: Check disk space and mount permissions
+### Diagnostics
 
-#### Tar Command Compatibility Issues
-
-The tool has been updated to address tar command compatibility issues across different Linux/Unix distributions:
-
-- **If backups fail with tar errors**: The tool now uses simplified tar commands without certain compression level specifiers that weren't universally supported
-- **Parallel compression**: If you have the `pigz` utility installed, the tool will use it automatically for parallel compression, otherwise it falls back to standard compression
-- **Different tar behaviors**: The tool handles differences between GNU tar and BSD tar implementations
-
-If you're still experiencing tar-related issues, you can:
-1. Check the exact error message in the logs at `logs/backup_history.log`
-2. Run with the `--dry-run` flag to see the commands that would be executed
-3. Try using standard compression by setting `--parallel 1` (disables parallel compression)
-
-#### Cloud Storage Issues
-
-- **"AWS CLI not installed"**: Install the AWS CLI with `apt install awscli` or equivalent
-- **"DigitalOcean Spaces credentials not found in secrets file"**: Check your `secrets.sh` file
-- **"Failed to upload to DigitalOcean Spaces"**: Verify credentials and bucket permissions
-- **"Access denied"**: Check that your API keys have the correct permissions
-
-#### Internal/External Backup Issues
-
-- **"Error: No cloud provider specified"**: When using `--external`, ensure you have a default cloud provider in `config.sh` or specify one with `--cloud`
-- **"Using internal storage"**: If you intended to use external storage, use the `--external` flag
-- **"Cloud provider invalid"**: Use one of the supported providers: do, aws, gdrive, dropbox
-
-### Diagnosing Problems
-
-1. **Run the cleanup script**:
-
-   ```bash
-   ./cleanup.sh --dry-run
-   ```
-
-   This will check all prerequisites without making changes.
-
-2. **Run the test suite**:
-
-   ```bash
-   ./run-tests.sh
-   ```
-
-   This will verify all components of the application and identify any issues.
-
-3. **Test cloud connectivity**:
-
-   ```bash
-   # For DigitalOcean Spaces
-   aws s3 ls --endpoint-url https://nyc3.digitaloceanspaces.com
-
-   # For AWS S3
-   aws s3 ls
-   ```
-
-4. **Check the logs**:
-
-   - For backup issues: `logs/backup_history.log`
-   - For test failures: `test/test_history.log`
-   - For detailed test output: `test/test_run_*.log`
-
-5. **Verify permissions**:
-
-   ```bash
-   ls -la /path/to/backup/destination
-   ```
-
-   Make sure the user running the script has write permissions.
-
-6. **Test in dry-run mode**:
-
-   ```bash
-   # Test internal backup
-   ./backup.sh --dry-run
-
-   # Test external backup
-   ./backup.sh --external --dry-run
-   ```
-
-### Cloud Storage Troubleshooting
-
-#### DigitalOcean Spaces
-
-- Ensure the AWS CLI is installed and properly configured
-- Verify that your spaces bucket exists and is accessible
-- Check that your API keys have read/write permissions
-- Try running with the `--verbose` flag for more detailed error messages
-
-#### Issues with External/Internal Switch
-
-If you're having trouble with the internal/external backup feature:
-
-1. Make sure you've set up your cloud provider credentials correctly
-2. Check that the credentials have the correct permissions
-3. Try specifying the provider explicitly with `--cloud do`
-4. Verify connectivity to the cloud provider independently
-5. Check the logs for any connection errors
-
-## Best Practices and Tips
-
-### Effective Backup Strategy
-
-For the most comprehensive backup strategy, consider these best practices:
-
-1. **Use the 3-2-1 backup rule**:
-
-   - Maintain at least 3 copies of your data
-   - Store copies on 2 different storage media
-   - Keep 1 copy offsite (using DigitalOcean Spaces or another cloud provider)
-
-2. **Schedule Regular Backups**:
-
-   - **Daily internal backups** for active development projects
-   - **Weekly external backups** to cloud storage for disaster recovery
-   - **Monthly full backups** for archival purposes
-
-3. **Balance Storage and Performance**:
-
-   - Use incremental backups for frequent internal snapshots
-   - Use differential backups for weekly external backups
-   - Use full backups for monthly archiving
-   - Set compression level based on your needs (higher = smaller files but slower)
-
-4. **Verify Your Backups**:
-   - Periodically restore backups to test the recovery process
-   - Use the `--verify` flag to automatically check backup integrity
-   - Run automated tests with `./run-tests.sh` regularly
-
-### Storage Management
-
-To optimize your backup storage and performance:
-
-1. **Choose the right cloud provider**:
-
-   - DigitalOcean Spaces (default) for simple, cost-effective storage
-   - AWS S3 for advanced features and global presence
-   - Google Drive or Dropbox for easy sharing and desktop integration
-
-2. **Clean up old backups**:
-
-   - Use `./cleanup.sh` to manage disk space
-   - Set up automated cleanup with cron
-   - Consider a rotation policy (keeping daily backups for 1 week, weekly for 1 month, etc.)
-
-3. **Protect your credentials**:
-   - Never commit `secrets.sh` to version control
-   - Regularly rotate your API keys and credentials
-   - Use the principle of least privilege for your API keys
-
-## Recent Enhancements
-
-The following enhancements have been recently implemented:
-
-### 1. Custom Local Backup Path Selection
-
-- Added interactive option to specify a custom path for local backups
-- Default path (./backups/) is still used if no custom path is provided
-- The launcher now prompts users if they want to use a custom path for internal backups
-- This makes it easier to store backups in specific locations without editing config files
-
-### 2. Enhanced Testing for Tar Compatibility
-
-- Added comprehensive test script (`test-tar-compatibility.sh`) to verify tar command compatibility across different Unix/Linux systems
-- Tests cover basic tar operations, compression options, and our custom implementations
-- Automatically detects system information (OS, tar version, etc.) and logs it for diagnostics
-- Verifies GNU tar and BSD tar compatibility
-- Integrated into the main test suite
-
-### 3. Real-time Progress Reporting
-
-- Added animated progress indicators for compression operations
-- Implemented progress tracking with real-time speed and ETA calculation
-- Enhanced cloud upload progress monitoring
-- Added detailed progress for backup verification
-- Status indicators now show operation stages (COMPRESSING, VERIFYING, UPLOADING)
-
-### 4. Enhanced Backup Verification
-
-- Implemented thorough verification option (`--thorough-verify`) that extracts a sample file to verify archive integrity
-- Added checksum calculation and storage for all backups
-- Enhanced file size validation and empty archive detection
-- Added multi-stage verification process with detailed logging
-- Verification failures provide more specific error information
-
-## Future Enhancements
-
-The following enhancements are planned for future versions:
-
-5. **Remote Access**: Web interface for managing backups remotely
-6. **Container Support**: Docker container for simplified deployment and environment consistency
-7. **Additional Cloud Providers**: Support for more cloud storage options
-8. **Improved Logging**: More detailed logging with log rotation and better error diagnostics
-9. **Compression Optimization**: Smarter compression settings based on file types
-10. **Backup Deduplication**: Space-saving by avoiding duplicate files across backups
+1. Run tests: `./run-tests.sh`
+2. Check logs: `logs/backup_history.log`
+3. Test in dry-run mode: `./backup.sh --dry-run`
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
