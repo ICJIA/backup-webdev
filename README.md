@@ -2,9 +2,7 @@
 
 ## Origin
 
-I built this tool because I needed a reliable way to back up all my repositories from my local `/webdev/` directory. After losing work due to a hard drive failure, I realized I needed a backup solution that understood web development projects specifically - what files to include, what files to exclude.
-
-I wanted flexibility - sometimes I needed quick local backups within my network, and other times I needed secure offsite storage to the cloud for disaster recovery.
+I built this tool because I needed a reliable way to back up all my repositories from my local `/webdev/` directory. After losing work due to a hard drive failure, I realized I needed a backup solution (in addition to Github) that understood backing up a web development project - what files to include, what files to exclude. This app is my attempt to make regular local or external backupsof my web development projects.
 
 This tool helps safeguard your web development projects by creating efficient, space-optimized backups while intelligently handling common web development patterns like excluding the resource-intensive `node_modules` directories.
 
