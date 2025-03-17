@@ -31,34 +31,44 @@ section() {
 run_test() {
     local test_name="$1"
     local test_command="$2"
+    local timeout_seconds="${3:-120}"  # Default timeout of 2 minutes
     local temp_log=$(mktemp)
     
     echo -e "${YELLOW}Running test: ${test_name}${NC}"
     echo "Running test: ${test_name}" >> "$LOG_FILE"
     echo "Command: ${test_command}" >> "$LOG_FILE"
+    echo "Timeout: ${timeout_seconds} seconds" >> "$LOG_FILE"
     echo "----------------------------------------" >> "$LOG_FILE"
     
-    # Run the test and capture output and exit code
-    eval "$test_command" > "$temp_log" 2>&1
+    # Run the test with timeout and capture output and exit code
+    timeout $timeout_seconds bash -c "$test_command" > "$temp_log" 2>&1
     local result=$?
     
-    # Append the output to the log file
-    cat "$temp_log" >> "$LOG_FILE"
-    echo "----------------------------------------" >> "$LOG_FILE"
-    
-    # Display result
-    if [ $result -eq 0 ]; then
-        echo -e "${GREEN}✓ Test passed: ${test_name}${NC}"
-        echo "RESULT: PASSED (Exit code: $result)" >> "$LOG_FILE"
-    else
-        echo -e "${RED}✗ Test failed: ${test_name} (Exit code: $result)${NC}"
-        echo "RESULT: FAILED (Exit code: $result)" >> "$LOG_FILE"
+    # Check if timeout occurred (exit code 124)
+    if [ $result -eq 124 ]; then
+        echo -e "${RED}⏱️ Test timed out after ${timeout_seconds} seconds: ${test_name}${NC}"
+        echo "RESULT: TIMEOUT after ${timeout_seconds} seconds" >> "$LOG_FILE"
+        echo "Command was: $test_command" >> "$LOG_FILE"
         TEST_RESULT=1
+    else
+        # Append the output to the log file
+        cat "$temp_log" >> "$LOG_FILE"
+        echo "----------------------------------------" >> "$LOG_FILE"
         
-        # Show the output for failed tests
-        echo -e "${RED}--- Error output: ---${NC}"
-        cat "$temp_log"
-        echo -e "${RED}-------------------${NC}"
+        # Display result
+        if [ $result -eq 0 ]; then
+            echo -e "${GREEN}✓ Test passed: ${test_name}${NC}"
+            echo "RESULT: PASSED (Exit code: $result)" >> "$LOG_FILE"
+        else
+            echo -e "${RED}✗ Test failed: ${test_name} (Exit code: $result)${NC}"
+            echo "RESULT: FAILED (Exit code: $result)" >> "$LOG_FILE"
+            TEST_RESULT=1
+            
+            # Show the output for failed tests
+            echo -e "${RED}--- Error output: ---${NC}"
+            cat "$temp_log"
+            echo -e "${RED}-------------------${NC}"
+        fi
     fi
     
     rm -f "$temp_log"
@@ -91,8 +101,8 @@ run_test "Test script syntax check" "bash -n \"$SCRIPT_DIR/test-backup.sh\""
 
 section "Functional Tests"
 
-# Test 7: Run the test script
-run_test "Comprehensive functionality test" "$SCRIPT_DIR/test-backup.sh"
+# Test 7: Run the test script (with SKIP_INTERACTIVE to prevent hanging on prompts and 3-minute timeout)
+run_test "Comprehensive functionality test" "SKIP_INTERACTIVE=1 $SCRIPT_DIR/test-backup.sh" 180
 
 section "Command-line Options Tests"
 
@@ -154,8 +164,8 @@ run_test "Cron test script permissions check" "test -x \"$SCRIPT_DIR/test-cron.s
 # Test 24: Check cron test script syntax
 run_test "Cron test script syntax check" "bash -n \"$SCRIPT_DIR/test-cron.sh\""
 
-# Test 25: Run cron tests in dry-run mode
-run_test "Cron functionality dry-run test" "$SCRIPT_DIR/test-cron.sh"
+# Test 25: Run cron tests in dry-run mode (with 3-minute timeout)
+run_test "Cron functionality dry-run test" "SKIP_INTERACTIVE=1 $SCRIPT_DIR/test-cron.sh" 180
 
 section "Tar Compatibility Tests"
 
@@ -168,8 +178,8 @@ run_test "Tar compatibility test script permissions check" "test -x \"$SCRIPT_DI
 # Test 28: Check tar compatibility test script syntax
 run_test "Tar compatibility test script syntax check" "bash -n \"$SCRIPT_DIR/test-tar-compatibility.sh\""
 
-# Test 29: Run tar compatibility tests
-run_test "Tar compatibility test" "$SCRIPT_DIR/test-tar-compatibility.sh"
+# Test 29: Run tar compatibility tests (with 3-minute timeout)
+run_test "Tar compatibility test" "SKIP_INTERACTIVE=1 $SCRIPT_DIR/test-tar-compatibility.sh" 180
 
 # Print summary
 echo -e "\n${CYAN}===== Test Summary =====${NC}"
@@ -201,7 +211,8 @@ mv "$TEMP_LOG" "$HISTORY_LOG"
 echo
 
 # Check if we were invoked by the launcher script
-if [ -f "$SCRIPT_DIR/webdev-backup.sh" ]; then
+# Skip interactive prompt if running from test suite
+if [ -f "$SCRIPT_DIR/webdev-backup.sh" ] && [ -z "$SKIP_INTERACTIVE" ]; then
     echo -e "${CYAN}Return to launcher menu? [Y/n]: ${NC}"
     read -n 1 -r -p "" LAUNCH_REPLY
     echo

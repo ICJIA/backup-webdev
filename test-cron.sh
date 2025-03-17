@@ -283,8 +283,9 @@ echo "Test logs saved to: $LOG_FILE"
 echo "Master test history log: $MASTER_LOG_FILE" 
 echo ""
 
-# Check if we were invoked by the launcher script
-if [ -f "$SCRIPT_DIR/webdev-backup.sh" ]; then
+# Check if we were invoked by the launcher script or test suite
+# Skip interactive prompt if running from test suite
+if [ -f "$SCRIPT_DIR/webdev-backup.sh" ] && [ -z "$SKIP_INTERACTIVE" ]; then
     echo -e "${CYAN}Return to launcher menu? [Y/n]: ${NC}"
     read -n 1 -r -p "" LAUNCH_REPLY
     echo

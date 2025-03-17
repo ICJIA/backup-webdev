@@ -378,18 +378,28 @@ EOF
     fi
 }
 
-# Create visual dashboard HTML
+# Create visual dashboard HTML without relying on gnuplot
 create_visual_dashboard() {
     local output_dir=$1
     local history_log=$2
     local dashboard_file="${output_dir}/backup_dashboard.html"
     
-    # Generate charts
+    # Create chart placeholder files if gnuplot is not available
     local history_chart="${output_dir}/backup_history_chart.png"
     local forecast_chart="${output_dir}/backup_forecast_chart.png"
     
-    generate_history_chart "$history_log" "$history_chart" 10
-    generate_space_forecast "$history_log" "$forecast_chart" 30
+    # Check if gnuplot is available
+    if command -v gnuplot >/dev/null 2>&1; then
+        # Generate charts using gnuplot
+        generate_history_chart "$history_log" "$history_chart" 10
+        generate_space_forecast "$history_log" "$forecast_chart" 30
+    else
+        # Create a simple 1x1 pixel transparent PNG
+        echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > "$history_chart"
+
+        # Copy the same placeholder for the forecast chart
+        cp "$history_chart" "$forecast_chart"
+    fi
     
     # Get recent backup stats
     local recent_backup=$(grep -A7 "BACKUP: SUCCESS" "$history_log" | head -7)
@@ -522,6 +532,9 @@ create_visual_dashboard() {
                 <h2>Storage Forecast</h2>
                 <div class="chart-container">
                     <img src="backup_forecast_chart.png" alt="Storage Forecast">
+                    <div style="text-align: center; margin-top: 10px;">
+                        <p><em>Note: Install gnuplot for detailed charts</em></p>
+                    </div>
                 </div>
             </div>
             
@@ -529,6 +542,9 @@ create_visual_dashboard() {
                 <h2>Backup History</h2>
                 <div class="chart-container">
                     <img src="backup_history_chart.png" alt="Backup History">
+                    <div style="text-align: center; margin-top: 10px;">
+                        <p><em>Note: Install gnuplot for detailed charts</em></p>
+                    </div>
                 </div>
             </div>
             

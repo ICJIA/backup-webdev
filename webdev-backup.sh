@@ -163,35 +163,67 @@ case "$choice" in
         ;;
     5)
         # Show dashboard if available, otherwise generate one
-        DASHBOARD_FILE=""
-        if [ -f "$SCRIPT_DIR/logs/dashboard/backup_dashboard.html" ]; then
-            DASHBOARD_FILE="$SCRIPT_DIR/logs/dashboard/backup_dashboard.html"
-        else
-            echo -e "\n${CYAN}Generating backup dashboard...${NC}\n"
-            mkdir -p "$SCRIPT_DIR/logs/dashboard"
-            if [ -f "$BACKUP_HISTORY_LOG" ]; then
-                DASHBOARD_FILE=$(create_visual_dashboard "$SCRIPT_DIR/logs/dashboard" "$BACKUP_HISTORY_LOG")
-            else
-                echo -e "${YELLOW}No backup history found. Run a backup first.${NC}"
-                sleep 2
-                exec "$0" "$@"  # Restart menu
-                exit 0
+        echo -e "\n${CYAN}===== WebDev Backup Dashboard =====${NC}\n"
+        
+        if [ -f "$BACKUP_HISTORY_LOG" ]; then
+            # Extract information from backup history for text-based dashboard
+            recent_backup=$(grep -A7 "BACKUP: SUCCESS" "$BACKUP_HISTORY_LOG" | head -7)
+            backup_date=$(echo "$recent_backup" | grep -o "[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\}")
+            projects_count=$(echo "$recent_backup" | grep "Projects:" | grep -o "[0-9]* succeeded" | grep -o "[0-9]*")
+            backup_size=$(echo "$recent_backup" | grep "Total Size:" | grep -o "[^ ]* [A-Z]*")
+            backup_location=$(echo "$recent_backup" | grep "Destination:" | cut -d':' -f2- | xargs)
+            
+            echo -e "${YELLOW}Last Backup Summary:${NC}"
+            echo -e "  Date:        ${GREEN}$backup_date${NC}"
+            echo -e "  Projects:    ${GREEN}$projects_count${NC}"
+            echo -e "  Total Size:  ${GREEN}$backup_size${NC}"
+            echo -e "  Location:    ${GREEN}$backup_location${NC}"
+            
+            # Show last few backups
+            echo -e "\n${YELLOW}Recent Backup History:${NC}"
+            grep -A2 "BACKUP: SUCCESS" "$BACKUP_HISTORY_LOG" | head -9 | sed 's/^/  /'
+            
+            # Check if there are any failed backups
+            failed_count=$(grep -c "BACKUP: FAILED\|BACKUP: PARTIAL" "$BACKUP_HISTORY_LOG")
+            if [ "$failed_count" -gt 0 ]; then
+                echo -e "\n${RED}Failed Backups in History: $failed_count${NC}"
+                grep -A2 "BACKUP: FAILED\|BACKUP: PARTIAL" "$BACKUP_HISTORY_LOG" | head -6 | sed 's/^/  /'
             fi
+            
+            # Try to generate HTML dashboard as well
+            DASHBOARD_FILE=""
+            echo -e "\n${CYAN}Generating HTML dashboard...${NC}"
+            mkdir -p "$SCRIPT_DIR/logs/dashboard"
+            DASHBOARD_FILE=$(create_visual_dashboard "$SCRIPT_DIR/logs/dashboard" "$BACKUP_HISTORY_LOG")
+            
+            # Try to open the dashboard
+            if [ -n "$DASHBOARD_FILE" ] && [ -f "$DASHBOARD_FILE" ]; then
+                echo -e "\n${GREEN}✓ HTML Dashboard generated successfully!${NC}"
+                if command -v xdg-open >/dev/null 2>&1; then
+                    echo -e "${CYAN}Opening in browser...${NC}"
+                    xdg-open "$DASHBOARD_FILE" &
+                elif command -v open >/dev/null 2>&1; then
+                    echo -e "${CYAN}Opening in browser...${NC}"
+                    open "$DASHBOARD_FILE" &
+                else
+                    echo -e "${YELLOW}HTML Dashboard saved to: $DASHBOARD_FILE${NC}"
+                    echo -e "${YELLOW}Please open it manually in your browser.${NC}"
+                fi
+            fi
+            
+            # Check for gnuplot
+            if ! command -v gnuplot >/dev/null 2>&1; then
+                echo -e "\n${YELLOW}Note: Install gnuplot for better graphical dashboards${NC}"
+                echo -e "${GREEN}sudo apt-get install gnuplot${NC} (Debian/Ubuntu)"
+                echo -e "${GREEN}sudo yum install gnuplot${NC} (Red Hat/CentOS)"
+                echo -e "${GREEN}brew install gnuplot${NC} (macOS with Homebrew)"
+            fi
+        else
+            echo -e "${YELLOW}No backup history found. Run a backup first.${NC}"
         fi
         
-        # Try to open the dashboard
-        if [ -n "$DASHBOARD_FILE" ]; then
-            echo -e "\n${CYAN}Opening dashboard...${NC}\n"
-            if command -v xdg-open >/dev/null 2>&1; then
-                xdg-open "$DASHBOARD_FILE" &
-            elif command -v open >/dev/null 2>&1; then
-                open "$DASHBOARD_FILE" &
-            else
-                echo -e "${YELLOW}Dashboard saved to: $DASHBOARD_FILE${NC}"
-                echo -e "${YELLOW}Please open it manually in your browser.${NC}"
-            fi
-        fi
-        sleep 2
+        echo -e "\n${CYAN}Press Enter to return to menu...${NC}"
+        read
         exec "$0" "$@"  # Restart menu
         ;;
     6)
