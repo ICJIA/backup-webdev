@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/utils.sh"
 source "$SCRIPT_DIR/ui.sh"
+source "$SCRIPT_DIR/reporting.sh"
 
 # Get passed arguments to forward to other scripts if needed
 ARGS="$@"
@@ -170,7 +171,8 @@ case "$choice" in
             recent_backup=$(grep -A7 "BACKUP: SUCCESS" "$BACKUP_HISTORY_LOG" | head -7)
             backup_date=$(echo "$recent_backup" | grep -o "[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\}")
             projects_count=$(echo "$recent_backup" | grep "Projects:" | grep -o "[0-9]* succeeded" | grep -o "[0-9]*")
-            backup_size=$(echo "$recent_backup" | grep "Total Size:" | grep -o "[^ ]* [A-Z]*")
+            # Fix the backup size extraction to handle multiline output properly
+            backup_size=$(echo "$recent_backup" | grep -A1 "Total Size:" | tr -d '\n' | grep -o "Total Size: [^ ]* [A-Z]*" | cut -d':' -f2- | xargs)
             backup_location=$(echo "$recent_backup" | grep "Destination:" | cut -d':' -f2- | xargs)
             
             echo -e "${YELLOW}Last Backup Summary:${NC}"
@@ -194,7 +196,14 @@ case "$choice" in
             DASHBOARD_FILE=""
             echo -e "\n${CYAN}Generating HTML dashboard...${NC}"
             mkdir -p "$SCRIPT_DIR/logs/dashboard"
-            DASHBOARD_FILE=$(create_visual_dashboard "$SCRIPT_DIR/logs/dashboard" "$BACKUP_HISTORY_LOG")
+            
+            # Check if the create_visual_dashboard function is available
+            if type create_visual_dashboard &>/dev/null; then
+                DASHBOARD_FILE=$(create_visual_dashboard "$SCRIPT_DIR/logs/dashboard" "$BACKUP_HISTORY_LOG")
+            else
+                echo -e "${RED}Error: Dashboard generation function not available${NC}"
+                echo -e "${YELLOW}Ensure reporting.sh is properly sourced${NC}"
+            fi
             
             # Try to open the dashboard
             if [ -n "$DASHBOARD_FILE" ] && [ -f "$DASHBOARD_FILE" ]; then
