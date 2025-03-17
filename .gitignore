@@ -1,0 +1,44 @@
+# Logs directories and files
+/logs/*
+!/logs/.gitkeep
+*.log
+
+# Test directories and files
+/test/*
+!/test/.gitkeep
+!/test/README.md
+test_history.log
+backup_history.log
+/test/webdev_test_*
+
+# Backup output directories
+webdev_backup_*
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS specific files
+.DS_Store
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.*.sw[a-p]
+.env
+node_modules/
+
+# Sensitive credentials
+secrets.sh
+*_credentials.json
+.api_keys
+.secrets/
