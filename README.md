@@ -6,9 +6,7 @@ I built this tool because I needed a reliable way to back up all my repositories
 
 I wanted flexibility - sometimes I needed quick local backups within my network, and other times I needed secure offsite storage to the cloud for disaster recovery.
 
----
-
-A comprehensive backup and disaster recovery solution specifically designed for web developers. This powerful tool helps safeguard your web development projects by creating efficient, space-optimized backups while intelligently handling common web development patterns like excluding the resource-intensive `node_modules` directories.
+This tool helps safeguard your web development projects by creating efficient, space-optimized backups while intelligently handling common web development patterns like excluding the resource-intensive `node_modules` directories.
 
 With support for both local and cloud storage (including DigitalOcean Spaces, AWS S3, Google Drive, and Dropbox), incremental and differential backup strategies, and automated scheduling, WebDev Backup Tool ensures that your code is protected against data loss, corrupted files, or accidental deletions. In today's fast-paced development environment, where a single project can represent hundreds of hours of work, having a reliable, automated backup strategy isn't just convenient—it's essential.
 
