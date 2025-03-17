@@ -13,6 +13,7 @@ backup_history.log
 
 # Backup output directories
 webdev_backup_*
+/backups/
 
 # Temporary files
 *.tmp

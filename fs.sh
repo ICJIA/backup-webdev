@@ -17,24 +17,103 @@ create_backup_archive() {
     
     # Determine if we want to use parallel compression
     local parallel_threads=${7:-1}
-    local parallel_cmd=""
+    local silent_mode=${8:-false}
+    
+    # Estimate the source size (for progress reporting)
+    local source_size=$(get_directory_size "$source_dir/$project" "node_modules")
+    log "Estimated source size: $(format_size $source_size)" "$log_file" "$silent_mode"
+    
+    # Create a temporary log for capturing tar output
+    local tar_log=$(mktemp)
     
     if [ "$parallel_threads" -gt 1 ] && command -v pigz >/dev/null 2>&1; then
         # Use pigz for parallel compression
-        parallel_cmd="--use-compress-program=pigz -$compression"
-        log "Using parallel compression with $parallel_threads threads (pigz)" "$log_file"
+        log "Using parallel compression with $parallel_threads threads (pigz)" "$log_file" "$silent_mode"
+        
+        # Run tar with pigz in background so we can monitor
+        if [ "$silent_mode" = false ]; then
+            # Show progress for interactive mode
+            (tar --use-compress-program="pigz -$compression" -cf "$backup_file" \
+                --exclude="$exclude_pattern" \
+                -C "$source_dir" "$project" 2> "$tar_log") &
+            
+            # Get PID of background tar process
+            local tar_pid=$!
+            
+            # Show real-time progress by monitoring the output file size
+            monitor_file_progress "$backup_file" "$((source_size / 5))" "Compressing $project" "$tar_pid"
+            
+            # Wait for tar to finish
+            wait $tar_pid
+            local tar_status=$?
+            
+            # Append tar log to main log
+            if [ -f "$tar_log" ]; then
+                cat "$tar_log" >> "$log_file"
+                rm -f "$tar_log"
+            fi
+            
+            return $tar_status
+        else
+            # Silent mode - just run normally
+            if tar --use-compress-program="pigz -$compression" -cf "$backup_file" \
+                --exclude="$exclude_pattern" \
+                -C "$source_dir" "$project" 2>> "$log_file"; then
+                rm -f "$tar_log"
+                return 0
+            else
+                local tar_status=$?
+                if [ -f "$tar_log" ]; then
+                    cat "$tar_log" >> "$log_file"
+                    rm -f "$tar_log"
+                fi
+                return $tar_status
+            fi
+        fi
     else
         # Use standard compression with gzip
-        parallel_cmd="-$compression"
-    fi
-    
-    # Create the compressed archive
-    if tar $parallel_cmd -czf "$backup_file" \
-        --exclude="$exclude_pattern" \
-        -C "$source_dir" "$project" 2>> "$log_file"; then
-        return 0
-    else
-        return 1
+        log "Using standard compression with gzip" "$log_file" "$silent_mode"
+        
+        # Run tar in background so we can monitor
+        if [ "$silent_mode" = false ]; then
+            # Show progress for interactive mode
+            (tar -czf "$backup_file" \
+                --exclude="$exclude_pattern" \
+                -C "$source_dir" "$project" 2> "$tar_log") &
+            
+            # Get PID of background tar process
+            local tar_pid=$!
+            
+            # Show real-time progress by monitoring the output file size
+            monitor_file_progress "$backup_file" "$((source_size / 5))" "Compressing $project" "$tar_pid"
+            
+            # Wait for tar to finish
+            wait $tar_pid
+            local tar_status=$?
+            
+            # Append tar log to main log
+            if [ -f "$tar_log" ]; then
+                cat "$tar_log" >> "$log_file"
+                rm -f "$tar_log"
+            fi
+            
+            return $tar_status
+        else
+            # Silent mode - just run normally
+            if tar -czf "$backup_file" \
+                --exclude="$exclude_pattern" \
+                -C "$source_dir" "$project" 2>> "$log_file"; then
+                rm -f "$tar_log"
+                return 0
+            else
+                local tar_status=$?
+                if [ -f "$tar_log" ]; then
+                    cat "$tar_log" >> "$log_file"
+                    rm -f "$tar_log"
+                fi
+                return $tar_status
+            fi
+        fi
     fi
 }
 
@@ -56,7 +135,7 @@ create_incremental_backup() {
     # Check if snapshot exists for incremental backup
     if [ -f "$snapshot_file" ]; then
         # Incremental backup using existing snapshot
-        if tar --listed-incremental="$snapshot_file" -$compression -czf "$backup_file" \
+        if tar --listed-incremental="$snapshot_file" -czf "$backup_file" \
             --exclude="$exclude_pattern" \
             -C "$source_dir" "$project" 2>> "$log_file"; then
             return 0
@@ -65,7 +144,7 @@ create_incremental_backup() {
         fi
     else
         # First level backup - create snapshot
-        if tar --listed-incremental="$snapshot_file" -$compression -czf "$backup_file" \
+        if tar --listed-incremental="$snapshot_file" -czf "$backup_file" \
             --exclude="$exclude_pattern" \
             -C "$source_dir" "$project" 2>> "$log_file"; then
             return 0
@@ -91,7 +170,7 @@ create_differential_backup() {
         # Create base snapshot with new backup
         base_snapshot="${backup_file}.base-snapshot"
         
-        if tar --listed-incremental="$base_snapshot" -$compression -czf "$backup_file" \
+        if tar --listed-incremental="$base_snapshot" -czf "$backup_file" \
             --exclude="$exclude_pattern" \
             -C "$source_dir" "$project" 2>> "$log_file"; then
             return 0
@@ -106,7 +185,7 @@ create_differential_backup() {
         cp "$base_snapshot" "$temp_snapshot"
         
         # Create differential backup
-        if tar --listed-incremental="$temp_snapshot" -$compression -czf "$backup_file" \
+        if tar --listed-incremental="$temp_snapshot" -czf "$backup_file" \
             --exclude="$exclude_pattern" \
             -C "$source_dir" "$project" 2>> "$log_file"; then
             rm -f "$temp_snapshot"
@@ -230,11 +309,16 @@ upload_to_cloud() {
     local provider=$2
     local log_file=${3:-}
     local bandwidth_limit=${4:-0}
+    local silent_mode=${5:-false}
     
     local limit_cmd=""
     if [ "$bandwidth_limit" -gt 0 ]; then
         limit_cmd="--bwlimit=$bandwidth_limit"
     fi
+    
+    # Get file size for progress reporting
+    local file_size=$(du -b "$backup_file" 2>/dev/null | cut -f1)
+    log "Starting upload of $(basename "$backup_file") ($(format_size $file_size))" "$log_file" "$silent_mode"
     
     case "$provider" in
         aws|s3)
@@ -256,13 +340,36 @@ upload_to_cloud() {
             local bucket="${S3_BUCKET:-webdev-backups}"
             local s3_path="s3://$bucket/$(basename "$backup_file")"
             
-            log "Uploading to S3: $s3_path" "$log_file"
-            if aws s3 cp $limit_cmd "$backup_file" "$s3_path"; then
-                log "Successfully uploaded to S3: $s3_path" "$log_file"
-                return 0
+            log "Uploading to S3: $s3_path" "$log_file" "$silent_mode"
+            
+            if [ "$silent_mode" = false ]; then
+                # Show progress for interactive mode
+                (aws s3 cp $limit_cmd "$backup_file" "$s3_path" 2>/dev/null) &
+                local upload_pid=$!
+                
+                # Monitor upload progress
+                monitor_file_progress "/dev/null" "$file_size" "Uploading to S3" "$upload_pid" 1
+                
+                # Wait for upload to finish
+                wait $upload_pid
+                local upload_status=$?
+                
+                if [ "$upload_status" -eq 0 ]; then
+                    log "Successfully uploaded to S3: $s3_path" "$log_file" "$silent_mode"
+                    return 0
+                else
+                    log "Failed to upload to S3: $s3_path" "$log_file" "$silent_mode"
+                    return 1
+                fi
             else
-                log "Failed to upload to S3: $s3_path" "$log_file"
-                return 1
+                # Silent mode - run normally
+                if aws s3 cp $limit_cmd "$backup_file" "$s3_path"; then
+                    log "Successfully uploaded to S3: $s3_path" "$log_file" "$silent_mode"
+                    return 0
+                else
+                    log "Failed to upload to S3: $s3_path" "$log_file" "$silent_mode"
+                    return 1
+                fi
             fi
             ;;
             
@@ -295,9 +402,19 @@ upload_to_cloud() {
             local endpoint="${DO_SPACES_ENDPOINT:-nyc3.digitaloceanspaces.com}"
             local spaces_path="s3://$bucket/$(basename "$backup_file")"
             
-            log "Uploading to DigitalOcean Spaces: $spaces_path" "$log_file"
-            if aws s3 cp $limit_cmd "$backup_file" "$spaces_path" --endpoint-url "https://$endpoint"; then
-                log "Successfully uploaded to DigitalOcean Spaces: $spaces_path" "$log_file"
+            log "Uploading to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
+            
+            if [ "$silent_mode" = false ]; then
+                # Show progress for interactive mode
+                (aws s3 cp $limit_cmd "$backup_file" "$spaces_path" --endpoint-url "https://$endpoint" 2>/dev/null) &
+                local upload_pid=$!
+                
+                # Monitor upload progress
+                monitor_file_progress "/dev/null" "$file_size" "Uploading to DigitalOcean Spaces" "$upload_pid" 1
+                
+                # Wait for upload to finish
+                wait $upload_pid
+                local upload_status=$?
                 
                 # Restore original AWS credentials if they existed
                 if [ -n "$AWS_KEY_BACKUP" ]; then
@@ -306,18 +423,38 @@ upload_to_cloud() {
                     export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
                 fi
                 
-                return 0
+                if [ "$upload_status" -eq 0 ]; then
+                    log "Successfully uploaded to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
+                    return 0
+                else
+                    log "Failed to upload to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
+                    return 1
+                fi
             else
-                log "Failed to upload to DigitalOcean Spaces: $spaces_path" "$log_file"
-                
-                # Restore original AWS credentials if they existed
-                if [ -n "$AWS_KEY_BACKUP" ]; then
-                    export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
-                    export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
-                    export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
+                # Silent mode - run normally
+                if aws s3 cp $limit_cmd "$backup_file" "$spaces_path" --endpoint-url "https://$endpoint"; then
+                    log "Successfully uploaded to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
+                    
+                    # Restore original AWS credentials if they existed
+                    if [ -n "$AWS_KEY_BACKUP" ]; then
+                        export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
+                        export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
+                        export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
+                    fi
+                    
+                    return 0
+                else
+                    log "Failed to upload to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
+                    
+                    # Restore original AWS credentials if they existed
+                    if [ -n "$AWS_KEY_BACKUP" ]; then
+                        export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
+                        export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
+                        export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
+                    fi
+                    
+                    return 1
                 fi
-                
-                return 1
             fi
             ;;
         

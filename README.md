@@ -2,11 +2,20 @@
 
 ## Origin
 
-I built this tool because I needed a reliable way to back up all my repositories from my local `/webdev/` directory. After losing work due to a hard drive failure, I realized I needed a backup solution (in addition to Github) that understood backing up a web development project - what files to include, what files to exclude. This app is my attempt to make regular local or external backupsof my web development projects.
+I built this series of bash scripts because I needed a reliable way to back up all my repositories from my local `/webdev/` directory. After losing work due to a hard drive failure, I realized I needed a backup solution (in addition to Github) that understood backing up a web development project - what files to include, what files to exclude. This app is my attempt to make regular local or external backups of my web projects.
 
-This tool helps safeguard your web development projects by creating efficient, space-optimized backups while intelligently handling common web development patterns like excluding the resource-intensive `node_modules` directories.
+This safeguards local web development projects by creating efficient, space-optimized backups while intelligently handling common web development patterns like excluding the resource-intensive `node_modules` directories.
 
-With support for both local and cloud storage (including DigitalOcean Spaces, AWS S3, Google Drive, and Dropbox), incremental and differential backup strategies, and automated scheduling, WebDev Backup Tool ensures that your code is protected against data loss, corrupted files, or accidental deletions. In today's fast-paced development environment, where a single project can represent hundreds of hours of work, having a reliable, automated backup strategy isn't just convenient—it's essential.
+With support for both local and cloud storage (including DigitalOcean Spaces, AWS S3, Google Drive, and Dropbox), incremental and differential backup strategies, and automated scheduling, WebDev-Backup Tool ensures that your code is protected against data loss, corrupted files, or accidental deletions.
+
+## Version 1.5.0
+
+The latest version includes several improvements:
+- Fixed tar command compatibility issues across different Linux/Unix distributions
+- Changed default backup directory to `./backups/` within the project folder
+- Added automatic cleanup of old backups (keeps 5 most recent by default)
+- Improved launcher menu with return-to-menu functionality
+- Enhanced cloud storage integration with DigitalOcean Spaces as the default provider
 
 ## Features
 
@@ -86,6 +95,203 @@ With support for both local and cloud storage (including DigitalOcean Spaces, AW
    nano secrets.sh   # or vim, code, etc.
    ```
 
+The tool is designed to be completely self-contained. All backups are stored in the `./backups/` directory within the project folder by default, making it easy to move or manage your backup system as a single unit.
+
+### ⚡️ Quick Run (TL;DR)
+
+Just want to back up your web projects right away? Here's how:
+
+1. **Set storage locations and credentials**:
+   ```bash
+   # For external storage credentials
+   nano secrets.sh
+   
+   # For local backup location
+   nano config.sh
+   ```
+   Two important settings to update:
+   - For **local storage**: Use the default `./backups/` directory within the project, or update `DEFAULT_BACKUP_DIR` in config.sh to your preferred location
+   - For **external storage**: Add your DigitalOcean credentials in secrets.sh
+
+2. **Run the tool**:
+   ```bash
+   # Make scripts executable
+   chmod +x *.sh
+
+   # Run the launcher (recommended for first time)
+   ./webdev-backup.sh
+
+   # Or run a backup directly (defaults to local storage)
+   ./backup.sh
+
+   # Or run a cloud backup to DigitalOcean Spaces
+   ./backup.sh --external
+   ```
+
+That's it! The tool will automatically detect your web projects and back them up, excluding `node_modules` directories.
+
+The default backup location is set to `./backups/` within the project directory and will be created automatically if it doesn't exist. You can customize this location in config.sh if you prefer a different path.
+
+### Sample Outputs
+
+Here's what you'll see when running the tool:
+
+#### Interactive Launcher Menu
+```
+===============================================
+|          WebDev Backup Tool v1.6.0         |
+===============================================
+A robust backup solution for web development projects
+Current date: 2025-03-17 14:35:21
+
+Current Configuration:
+- Source directory:      /home/user/webdev
+- Backup destination:    ./backups  # Default location (created automatically if needed)
+- Logs directory:        /home/user/backup-webdev/logs
+- Test directory:        /home/user/backup-webdev/test
+- Projects found:        5
+
+Last backup: 2025-03-17 09:15:23
+
+Select an option:
+1) Run Backup (Interactive Mode)
+2) Run Comprehensive Tests
+3) Run Cleanup Tool
+4) Restore Backups
+5) View Backup Dashboard
+6) View Project Documentation
+7) View Backup History
+8) Configure Automated Backups (Cron)
+9) Advanced Options
+q) Quit
+
+Enter your choice [1-9/q]:
+```
+
+#### Backup Dashboard (Internal Storage)
+```
++------------------------------------------------------------------------------+
+| BACKUP DASHBOARD - 2025-03-17 14:37:45                                       |
++------------------------------------------------------------------------------+
+| PROJECT NAME                             | SIZE       | STATUS                |
++------------------------------------------------------------------------------+
+| my-react-app                             | 105.7 MB   | COMPRESSING...        |
+| my-react-app                             | 4.8 MB     | ✓ DONE (22.0x)        |
+| nodejs-api                               | 75.2 MB    | COMPRESSING...        |
+| nodejs-api                               | 3.1 MB     | ✓ DONE (24.2x)        |
+| portfolio-site                           | 55.3 MB    | COMPRESSING...        |
+| portfolio-site                           | 2.5 MB     | ✓ DONE (22.1x)        |
++------------------------------------------------------------------------------+
+| TOTAL                                    | 10.4 MB    | COMPLETED             |
++------------------------------------------------------------------------------+
+
+Backup Type: Full
+Compression Level: 6
+Storage: INTERNAL (local storage)
+Note: Each project's node_modules directory will be excluded
+
+===== Backup Summary =====
+- Projects processed: 3
+- Successfully backed up: 3
+- Failed backups: 0
+- Total source size: 236.2 MB
+- Total backup size: 10.4 MB
+- Overall compression ratio: 22.7x
+- Backup location: ./backups/webdev_backup_2025-03-17_14-37-45
+- Storage type: INTERNAL (local storage)
+- Completed at: 2025-03-17 14:38:27
+
+Return to launcher menu? [Y/n]:
+```
+
+#### External Backup to DigitalOcean Spaces
+```
++------------------------------------------------------------------------------+
+| BACKUP DASHBOARD - 2025-03-17 14:40:12                                       |
++------------------------------------------------------------------------------+
+| PROJECT NAME                             | SIZE       | STATUS                |
++------------------------------------------------------------------------------+
+| my-react-app                             | 105.7 MB   | COMPRESSING...        |
+| my-react-app                             | 4.8 MB     | ✓ DONE (22.0x)        |
+| my-react-app                             | 4.8 MB     | UPLOADING...          |
+| my-react-app                             | 4.8 MB     | ✓ UPLOADED (22.0x)    |
+| nodejs-api                               | 75.2 MB    | COMPRESSING...        |
+| nodejs-api                               | 3.1 MB     | ✓ DONE (24.2x)        |
+| nodejs-api                               | 3.1 MB     | UPLOADING...          |
+| nodejs-api                               | 3.1 MB     | ✓ UPLOADED (24.2x)    |
++------------------------------------------------------------------------------+
+| TOTAL                                    | 7.9 MB     | COMPLETED             |
++------------------------------------------------------------------------------+
+
+Backup Type: Full
+Compression Level: 6
+Storage: EXTERNAL (do cloud provider)
+Note: Each project's node_modules directory will be excluded
+
+===== Backup Summary =====
+- Projects processed: 2
+- Successfully backed up: 2
+- Failed backups: 0
+- Total source size: 180.9 MB
+- Total backup size: 7.9 MB
+- Overall compression ratio: 22.9x
+- Backup location: ./backups/webdev_backup_2025-03-17_14-40-12
+- Storage type: EXTERNAL (do cloud provider)
+- Completed at: 2025-03-17 14:41:30
+
+Return to launcher menu? [Y/n]:
+```
+
+#### HTML Dashboard View
+```
+Visual dashboard available at: ./backups/webdev_backup_2025-03-17_14-40-12/dashboard.html
+```
+
+The HTML dashboard provides interactive charts and statistics:
+
+![Dashboard Screenshot](https://example.com/dashboard-screenshot.png)
+
+Key dashboard features:
+- Backup size trends over time
+- Compression ratio comparisons
+- Project growth visualization
+- Storage usage forecasting
+- Interactive reports with filtering options
+
+#### Backup History View
+```
+===== Backup History =====
+
+2025-03-17 14:40:12 - BACKUP: SUCCESS
+  Type: Full
+  Storage: EXTERNAL (do)
+  Projects: 2 succeeded, 0 failed
+  Total Size: 7.9 MB
+  Source: /home/user/webdev
+  Destination: ./backups/webdev_backup_2025-03-17_14-40-12
+--------------------------------------------------
+
+2025-03-17 09:15:23 - BACKUP: SUCCESS
+  Type: Full
+  Storage: INTERNAL
+  Projects: 5 succeeded, 0 failed
+  Total Size: 15.2 MB
+  Source: /home/user/webdev
+  Destination: ./backups/webdev_backup_2025-03-17_09-15-23
+--------------------------------------------------
+
+2025-03-16 18:22:05 - BACKUP: SUCCESS
+  Type: Incremental
+  Storage: INTERNAL
+  Projects: 2 succeeded, 0 failed
+  Total Size: 2.8 MB
+  Source: /home/user/webdev
+  Destination: ./backups/webdev_backup_2025-03-16_18-22-05
+--------------------------------------------------
+```
+
+Want more details? Continue reading for cloud setup and advanced options.
+
 ### Cloud Storage Setup
 
 For DigitalOcean Spaces (recommended external storage):
@@ -159,6 +365,8 @@ To enable email notifications:
 
 ### Directory Configuration
 
+By default, backups are stored in a `./backups/` directory within the project folder. This directory will be created automatically if it doesn't exist. You can change this location if needed.
+
 The script automatically detects the source directory:
 
 - It looks for a "webdev" directory one level up from where the script is located
@@ -176,6 +384,15 @@ To customize paths permanently, edit the `config.sh` file:
 ```bash
 # Edit DEFAULT_SOURCE_DIR and DEFAULT_BACKUP_DIR in config.sh
 nano config.sh
+```
+
+Example of customizing the backup location:
+```bash
+# Inside config.sh change this:
+DEFAULT_BACKUP_DIR="$SCRIPT_DIR/backups"
+
+# To a different location if needed:
+DEFAULT_BACKUP_DIR="/home/yourusername/my-custom-backups"
 ```
 
 ### Quick Start Guide
@@ -755,7 +972,7 @@ Options:
 Examples:
 
 ```bash
-# Standard cleanup (keeps recent logs)
+# Standard cleanup (keeps 5 most recent logs and backups)
 ./cleanup.sh
 
 # Remove all logs
@@ -766,6 +983,9 @@ Examples:
 
 # Backup logs before removing
 ./cleanup.sh --backup-logs --all-logs
+
+# Simulate cleanup without making changes
+./cleanup.sh --dry-run
 ```
 
 The cleanup script:
@@ -773,10 +993,11 @@ The cleanup script:
 1. Verifies source directory existence
 2. Verifies backup destination accessibility
 3. Tests target volume write permission
-4. Asks for confirmation before deleting each log file (defaults to Yes)
+4. Asks for confirmation before deleting each file (defaults to Yes)
 5. Cleans up log files based on specified options
-6. Verifies script permissions
-7. Creates any missing directories
+6. **Manages backup directories** (keeps 5 most recent backups)
+7. Verifies script permissions
+8. Creates any missing directories
 
 ### Modular Architecture
 
@@ -835,6 +1056,19 @@ Your API keys and sensitive information will be automatically loaded when runnin
 - **"Cannot write to backup directory"**: Check permissions on the destination directory
 - **"Failed to create backup directory"**: Ensure the parent directory exists and has write permissions
 - **"Filesystem may be read-only or full"**: Check disk space and mount permissions
+
+#### Tar Command Compatibility Issues
+
+The tool has been updated to address tar command compatibility issues across different Linux/Unix distributions:
+
+- **If backups fail with tar errors**: The tool now uses simplified tar commands without certain compression level specifiers that weren't universally supported
+- **Parallel compression**: If you have the `pigz` utility installed, the tool will use it automatically for parallel compression, otherwise it falls back to standard compression
+- **Different tar behaviors**: The tool handles differences between GNU tar and BSD tar implementations
+
+If you're still experiencing tar-related issues, you can:
+1. Check the exact error message in the logs at `logs/backup_history.log`
+2. Run with the `--dry-run` flag to see the commands that would be executed
+3. Try using standard compression by setting `--parallel 1` (disables parallel compression)
 
 #### Cloud Storage Issues
 
@@ -970,6 +1204,52 @@ To optimize your backup storage and performance:
    - Never commit `secrets.sh` to version control
    - Regularly rotate your API keys and credentials
    - Use the principle of least privilege for your API keys
+
+## Recent Enhancements
+
+The following enhancements have been recently implemented:
+
+### 1. Custom Local Backup Path Selection
+
+- Added interactive option to specify a custom path for local backups
+- Default path (./backups/) is still used if no custom path is provided
+- The launcher now prompts users if they want to use a custom path for internal backups
+- This makes it easier to store backups in specific locations without editing config files
+
+### 2. Enhanced Testing for Tar Compatibility
+
+- Added comprehensive test script (`test-tar-compatibility.sh`) to verify tar command compatibility across different Unix/Linux systems
+- Tests cover basic tar operations, compression options, and our custom implementations
+- Automatically detects system information (OS, tar version, etc.) and logs it for diagnostics
+- Verifies GNU tar and BSD tar compatibility
+- Integrated into the main test suite
+
+### 3. Real-time Progress Reporting
+
+- Added animated progress indicators for compression operations
+- Implemented progress tracking with real-time speed and ETA calculation
+- Enhanced cloud upload progress monitoring
+- Added detailed progress for backup verification
+- Status indicators now show operation stages (COMPRESSING, VERIFYING, UPLOADING)
+
+### 4. Enhanced Backup Verification
+
+- Implemented thorough verification option (`--thorough-verify`) that extracts a sample file to verify archive integrity
+- Added checksum calculation and storage for all backups
+- Enhanced file size validation and empty archive detection
+- Added multi-stage verification process with detailed logging
+- Verification failures provide more specific error information
+
+## Future Enhancements
+
+The following enhancements are planned for future versions:
+
+5. **Remote Access**: Web interface for managing backups remotely
+6. **Container Support**: Docker container for simplified deployment and environment consistency
+7. **Additional Cloud Providers**: Support for more cloud storage options
+8. **Improved Logging**: More detailed logging with log rotation and better error diagnostics
+9. **Compression Optimization**: Smarter compression settings based on file types
+10. **Backup Deduplication**: Space-saving by avoiding duplicate files across backups
 
 ## License
 

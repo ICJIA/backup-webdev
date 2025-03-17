@@ -21,7 +21,7 @@ fi
 # Display header
 clear
 echo -e "${CYAN}===============================================${NC}"
-echo -e "${CYAN}|          WebDev Backup Tool v1.5.0         |${NC}"
+echo -e "${CYAN}|          WebDev Backup Tool v1.6.0         |${NC}"
 echo -e "${CYAN}===============================================${NC}"
 echo -e "${GREEN}A robust backup solution for web development projects${NC}"
 echo -e "Current date: $(date '+%Y-%m-%d %H:%M:%S')\n"
@@ -82,9 +82,26 @@ case "$choice" in
         
         case "$storage_choice" in
             1)
-                echo -e "\n${GREEN}Using INTERNAL storage (local backup)${NC}\n"
-                sleep 1
-                "$SCRIPT_DIR/backup.sh" "$@"
+                echo -e "\n${GREEN}Using INTERNAL storage (local backup)${NC}"
+                echo -e "Default path: ${DEFAULT_BACKUP_DIR}\n"
+                read -p "Use custom backup path? [y/N] " custom_path_choice
+                
+                if [[ "$custom_path_choice" =~ ^[Yy]$ ]]; then
+                    read -p "Enter custom backup path: " custom_path
+                    if [[ -n "$custom_path" ]]; then
+                        echo -e "\n${GREEN}Using custom backup path: $custom_path${NC}\n"
+                        sleep 1
+                        "$SCRIPT_DIR/backup.sh" --dest "$custom_path" "$@"
+                    else
+                        echo -e "\n${YELLOW}No path entered. Using default path.${NC}\n"
+                        sleep 1
+                        "$SCRIPT_DIR/backup.sh" "$@"
+                    fi
+                else
+                    echo -e "\n${GREEN}Using default backup path${NC}\n"
+                    sleep 1
+                    "$SCRIPT_DIR/backup.sh" "$@"
+                fi
                 ;;
             2)
                 echo -e "\n${CYAN}Select cloud provider:${NC}"
@@ -223,15 +240,16 @@ case "$choice" in
         echo "1) Run Incremental Backup"
         echo "2) Run Differential Backup"
         echo "3) Run Backup with Verification"
-        echo "4) Run Backup with Cloud Upload"
-        echo "5) Run Backup with Email Notification"
-        echo "6) Run Backup with Maximum Compression"
-        echo "7) Run Backup with Parallel Processing"
-        echo "8) Run Backup in Dry-Run Mode (simulation)"
-        echo "9) Run Custom Backup Command..."
+        echo "4) Run Backup with Thorough Verification"
+        echo "5) Run Backup with Cloud Upload"
+        echo "6) Run Backup with Email Notification"
+        echo "7) Run Backup with Maximum Compression"
+        echo "8) Run Backup with Parallel Processing"
+        echo "9) Run Backup in Dry-Run Mode (simulation)"
+        echo "0) Run Custom Backup Command..."
         echo "b) Back to Main Menu"
         echo
-        read -p "Enter your choice [1-9/b]: " adv_choice
+        read -p "Enter your choice [0-9/b]: " adv_choice
         
         case "$adv_choice" in
             1)
@@ -250,6 +268,11 @@ case "$choice" in
                 "$SCRIPT_DIR/backup.sh" --verify "$@"
                 ;;
             4)
+                echo -e "\n${CYAN}Starting backup with thorough verification...${NC}\n"
+                sleep 1
+                "$SCRIPT_DIR/backup.sh" --thorough-verify "$@"
+                ;;
+            5)
                 echo "Available cloud providers:"
                 echo "1) Amazon S3"
                 echo "2) Google Drive"
@@ -267,7 +290,7 @@ case "$choice" in
                 sleep 1
                 "$SCRIPT_DIR/backup.sh" --cloud "$CLOUD" "$@"
                 ;;
-            5)
+            6)
                 read -p "Enter email for notification: " email
                 if [[ -n "$email" ]]; then
                     echo -e "\n${CYAN}Starting backup with email notification...${NC}\n"
@@ -279,12 +302,12 @@ case "$choice" in
                     exec "$0" "$@"  # Restart menu
                 fi
                 ;;
-            6)
+            7)
                 echo -e "\n${CYAN}Starting backup with maximum compression...${NC}\n"
                 sleep 1
                 "$SCRIPT_DIR/backup.sh" --compression 9 "$@"
                 ;;
-            7)
+            8)
                 read -p "Enter number of threads [1-8]: " threads
                 if [[ "$threads" =~ ^[1-8]$ ]]; then
                     echo -e "\n${CYAN}Starting backup with $threads threads...${NC}\n"
@@ -296,12 +319,12 @@ case "$choice" in
                     "$SCRIPT_DIR/backup.sh" "$@"
                 fi
                 ;;
-            8)
+            9)
                 echo -e "\n${CYAN}Starting backup in dry-run mode (simulation)...${NC}\n"
                 sleep 1
                 "$SCRIPT_DIR/backup.sh" --dry-run "$@"
                 ;;
-            9)
+            0)
                 echo -e "\n${CYAN}Enter custom backup command:${NC}"
                 echo -e "${YELLOW}Base command: ./backup.sh ${NC}"
                 read -p "Options: " custom_opts

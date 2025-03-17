@@ -15,6 +15,7 @@ SILENT_MODE=false
 INCREMENTAL_BACKUP=false
 DIFFERENTIAL_BACKUP=false
 VERIFY_BACKUP=false
+THOROUGH_VERIFY=false
 COMPRESSION_LEVEL=6
 EMAIL_NOTIFICATION=""
 CLOUD_PROVIDER=""
@@ -44,6 +45,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --verify)
             VERIFY_BACKUP=true
+            shift
+            ;;
+        --thorough-verify)
+            VERIFY_BACKUP=true
+            THOROUGH_VERIFY=true
             shift
             ;;
         --compression)
@@ -380,7 +386,8 @@ for project_path in "${projects[@]}"; do
             "$LOG_FILE" \
             "$COMPRESSION_LEVEL" \
             "*/node_modules/*" \
-            "$PARALLEL_THREADS"; then
+            "$PARALLEL_THREADS" \
+            "$SILENT_MODE"; then
             success=true
         else
             success=false
@@ -410,15 +417,29 @@ for project_path in "${projects[@]}"; do
         
         # Verify backup if requested
         if [ "$VERIFY_BACKUP" = true ]; then
-            if verify_backup "$PROJECT_BACKUP_FILE" "$LOG_FILE" "$SILENT_MODE"; then
-                log "Backup verification passed for $project" "$LOG_FILE" "$SILENT_MODE"
-                
-                # Create checksum file
-                calculate_checksum "$PROJECT_BACKUP_FILE" > "$PROJECT_BACKUP_FILE.sha256"
-                
-                if [ "$SILENT_MODE" = false ]; then
-                    printf "\033[1A"
-                    print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "✓ VERIFIED (${RATIO}x)"
+            # Start verification with appropriate level of checking
+            log "Starting backup verification for $project" "$LOG_FILE" "$SILENT_MODE"
+            if [ "$SILENT_MODE" = false ]; then
+                printf "\033[1A"
+                print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "VERIFYING..."
+            fi
+            
+            # If thorough verification was requested, we'll do a more comprehensive check
+            if verify_backup "$PROJECT_BACKUP_FILE" "$LOG_FILE" "$SILENT_MODE" "$THOROUGH_VERIFY"; then
+                if [ "$THOROUGH_VERIFY" = true ]; then
+                    log "Thorough backup verification passed for $project" "$LOG_FILE" "$SILENT_MODE"
+                    
+                    if [ "$SILENT_MODE" = false ]; then
+                        printf "\033[1A"
+                        print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "✓ FULLY VERIFIED (${RATIO}x)"
+                    fi
+                else
+                    log "Backup verification passed for $project" "$LOG_FILE" "$SILENT_MODE"
+                    
+                    if [ "$SILENT_MODE" = false ]; then
+                        printf "\033[1A"
+                        print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "✓ VERIFIED (${RATIO}x)"
+                    fi
                 fi
             else
                 log "Backup verification FAILED for $project" "$LOG_FILE" "$SILENT_MODE"
@@ -443,7 +464,7 @@ for project_path in "${projects[@]}"; do
                 print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "UPLOADING..."
             fi
             
-            if upload_to_cloud "$PROJECT_BACKUP_FILE" "$CLOUD_PROVIDER" "$LOG_FILE" "$BANDWIDTH_LIMIT"; then
+            if upload_to_cloud "$PROJECT_BACKUP_FILE" "$CLOUD_PROVIDER" "$LOG_FILE" "$BANDWIDTH_LIMIT" "$SILENT_MODE"; then
                 log "Project $project uploaded to $CLOUD_PROVIDER" "$LOG_FILE" "$SILENT_MODE"
                 
                 if [ "$SILENT_MODE" = false ]; then
@@ -498,6 +519,7 @@ cat > "$METADATA_FILE" << EOF
   "source_size_bytes": $TOTAL_SRC_SIZE,
   "backup_size_bytes": $TOTAL_BACKUP_SIZE,
   "verified": $VERIFY_BACKUP,
+  "thorough_verification": $THOROUGH_VERIFY,
   "dry_run": $DRY_RUN
 }
 EOF

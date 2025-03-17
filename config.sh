@@ -16,8 +16,8 @@ else
     DEFAULT_SOURCE_DIR="$(dirname "$SCRIPT_DIR")"
 fi
 
-# Default backup destination
-DEFAULT_BACKUP_DIR="/mnt/d/_WEBDEV_BACKUPS"
+# Default backup destination - a "backups" directory in the project's root
+DEFAULT_BACKUP_DIR="$SCRIPT_DIR/backups"
 
 # Default cloud provider for external backups
 DEFAULT_CLOUD_PROVIDER="do"

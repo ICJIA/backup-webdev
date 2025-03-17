@@ -39,11 +39,12 @@ show_help() {
     echo "  Backup destination:    $DEFAULT_BACKUP_DIR"
     echo ""
     echo "Examples:"
-    echo "  $0                     # Standard cleanup (keeps recent logs)"
+    echo "  $0                     # Standard cleanup (keeps recent logs and 5 most recent backups)"
     echo "  $0 -a                  # Remove all logs"
     echo "  $0 -d 30               # Remove logs older than 30 days"
     echo "  $0 -b -a               # Backup all logs before removing them"
     echo "  $0 -t /mnt/backups     # Use custom backup target"
+    echo "  $0 --dry-run           # Show what would be cleaned without making changes"
     echo ""
     exit 0
 }
@@ -473,6 +474,43 @@ else
         fi
     else
         echo -e "${YELLOW}DRY RUN: Would ask for confirmation to remove old test directories${NC}"
+    fi
+    
+    # Clean up backup directories
+    if [ -d "$BACKUP_DIR" ]; then
+        section "Cleaning Backup Directories"
+        
+        if [ "$DRY_RUN" = false ]; then
+            # Count backups
+            BACKUP_COUNT=$(find "$BACKUP_DIR" -type d -name "webdev_backup_*" | wc -l)
+            
+            if [ "$BACKUP_COUNT" -gt 5 ]; then
+                # Keep only the 5 most recent backups
+                OLD_BACKUPS=$(find "$BACKUP_DIR" -type d -name "webdev_backup_*" -printf "%T@ %p\n" | sort -n | head -n -5 | cut -d' ' -f2-)
+                
+                echo "Found $(echo "$OLD_BACKUPS" | wc -w) old backup directories to clean up (keeping 5 most recent)..."
+                
+                # Remove old backup directories with confirmation
+                for dir in $OLD_BACKUPS; do
+                    dir_name=$(basename "$dir")
+                    dir_date=$(echo "$dir_name" | sed 's/webdev_backup_//')
+                    if confirm "Delete old backup from $dir_date?" "y"; then
+                        run_cmd "rm -rf \"$dir\""
+                        echo -e "${GREEN}  ✓ Deleted: $dir_name${NC}"
+                    else
+                        echo -e "${YELLOW}  ✗ Kept: $dir_name${NC}"
+                    fi
+                done
+                
+                echo -e "${GREEN}✓ Backup directory cleanup completed${NC}"
+            else
+                echo -e "${GREEN}✓ Less than 5 backups found, nothing to clean up${NC}"
+            fi
+        else
+            echo -e "${YELLOW}DRY RUN: Would ask for confirmation to remove old backups, keeping 5 most recent${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Backup directory does not exist yet: $BACKUP_DIR${NC}"
     fi
 fi
 

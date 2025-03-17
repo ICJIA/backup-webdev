@@ -184,20 +184,74 @@ calculate_checksum() {
     fi
 }
 
-# Verify backup integrity
+# Verify backup integrity with enhanced checks
 verify_backup() {
     local backup_file=$1
     local log_file=${2:-}
     local silent_mode=${3:-false}
+    local thorough=${4:-false}
     
-    # Test integrity of compressed file
-    if tar -tzf "$backup_file" > /dev/null 2>&1; then
-        log "✓ Backup integrity verified for: $(basename "$backup_file")" "$log_file" "$silent_mode"
-        return 0
-    else
+    # Basic test: integrity of compressed file
+    if ! tar -tzf "$backup_file" > /dev/null 2>&1; then
         log "✗ Backup integrity check failed: $(basename "$backup_file")" "$log_file" "$silent_mode"
         return 1
     fi
+    
+    # Check file is not empty
+    local file_size=$(du -b "$backup_file" | cut -f1)
+    if [ "$file_size" -eq 0 ]; then
+        log "✗ Backup file is empty: $(basename "$backup_file")" "$log_file" "$silent_mode"
+        return 1
+    fi
+    
+    # Calculate and store checksum
+    local checksum=$(calculate_checksum "$backup_file")
+    local checksum_file="${backup_file}.sha256"
+    echo "$checksum  $(basename "$backup_file")" > "$checksum_file"
+    log "Checksum saved to: $checksum_file" "$log_file" "$silent_mode"
+    
+    # If thorough check requested, actually extract to temp and verify extraction
+    if [ "$thorough" = true ]; then
+        log "Performing thorough integrity verification..." "$log_file" "$silent_mode"
+        
+        # Create temporary directory for extraction test
+        local temp_dir=$(mktemp -d)
+        log "Using temporary directory for extraction test: $temp_dir" "$log_file" "$silent_mode"
+        
+        # Attempt to extract a small portion (just list files then extract one small file)
+        local file_count=$(tar -tzf "$backup_file" | wc -l)
+        log "Archive contains $file_count files/directories" "$log_file" "$silent_mode"
+        
+        # Try to extract a small text file for verification
+        # Find the first small file (likely a .md, .txt, .json, etc.)
+        local small_file=$(tar -tzf "$backup_file" | grep -E '\.(md|txt|json|js|css|html)$' | head -1)
+        
+        if [ -n "$small_file" ]; then
+            if tar -xzf "$backup_file" -C "$temp_dir" "$small_file" 2>/dev/null; then
+                log "✓ Successfully extracted test file: $small_file" "$log_file" "$silent_mode"
+                if [ -f "$temp_dir/$small_file" ]; then
+                    log "✓ Extracted file exists and is readable" "$log_file" "$silent_mode"
+                else
+                    log "✗ Extracted file does not exist or is not readable" "$log_file" "$silent_mode"
+                    rm -rf "$temp_dir"
+                    return 1
+                fi
+            else
+                log "✗ Failed to extract test file" "$log_file" "$silent_mode"
+                rm -rf "$temp_dir"
+                return 1
+            fi
+        else
+            log "No suitable small file found for extraction test, skipping this step" "$log_file" "$silent_mode"
+        fi
+        
+        # Clean up
+        rm -rf "$temp_dir"
+    fi
+    
+    # All checks passed
+    log "✓ Backup integrity verified for: $(basename "$backup_file")" "$log_file" "$silent_mode"
+    return 0
 }
 
 # Send email notification
@@ -274,6 +328,133 @@ progress_bar() {
     # Print newline if completed
     if [ "$current" -eq "$total" ]; then
         printf "\n"
+    fi
+}
+
+# Animated progress indicator for operations with indeterminate progress
+animated_progress() {
+    local pid=$1      # Process ID to monitor
+    local message=$2  # Status message to display
+    local interval=${3:-0.2}  # Refresh interval
+    local symbols=("-" "\\" "|" "/")  # Animation frames
+    local i=0
+    
+    # Save cursor position
+    tput sc
+    
+    while kill -0 $pid 2>/dev/null; do
+        symbol=${symbols[$i]}
+        i=$(( (i + 1) % 4 ))
+        
+        # If silent mode is enabled, don't show animation
+        if [ "$SILENT_MODE" != "true" ]; then
+            # Move to saved position and print progress
+            tput rc
+            printf "\r[%s] %s " "$symbol" "$message"
+        fi
+        
+        sleep $interval
+    done
+    
+    # Clear line
+    tput rc
+    printf "\r%-80s\r" " "
+}
+
+# Estimate progress based on file size change
+monitor_file_progress() {
+    local file_path=$1      # File path to monitor
+    local expected_size=$2  # Expected final size (approx)
+    local message=$3        # Status message to display
+    local pid=$4            # Process ID to monitor (optional)
+    local interval=${5:-1}  # Refresh interval in seconds
+    
+    # Initialize progress variables
+    local current_size=0
+    local last_size=0
+    local start_time=$(date +%s)
+    local elapsed=0
+    local speed=0
+    local eta=0
+    
+    while true; do
+        # Check if file exists yet
+        if [ -f "$file_path" ]; then
+            current_size=$(du -b "$file_path" 2>/dev/null | cut -f1)
+            
+            # If expected size is not provided, use some heuristics
+            if [ -z "$expected_size" ] || [ "$expected_size" -eq 0 ]; then
+                # Just show size
+                printf "\r[%s] %s - %s " "↑" "$message" "$(format_size $current_size)"
+            else
+                # Calculate progress
+                local percent=$((current_size * 100 / expected_size))
+                if [ "$percent" -gt 100 ]; then
+                    percent=100
+                fi
+                
+                # Calculate speed
+                if [ "$elapsed" -gt 0 ]; then
+                    speed=$((current_size / elapsed))
+                fi
+                
+                # Calculate ETA
+                if [ "$speed" -gt 0 ]; then
+                    eta=$(((expected_size - current_size) / speed))
+                fi
+                
+                # Format for display
+                local speed_formatted=$(format_size $speed)
+                local eta_formatted=$(format_time $eta)
+                
+                # Show progress
+                printf "\r[%3d%%] %s - %s at %s/s, ETA: %s " \
+                       "$percent" "$message" "$(format_size $current_size)" "$speed_formatted" "$eta_formatted"
+            fi
+            
+            # Store last size for speed calculation
+            last_size=$current_size
+        else
+            printf "\r[...] %s - Waiting for file..." "$message"
+        fi
+        
+        # Check if monitored process still exists
+        if [ -n "$pid" ] && ! kill -0 $pid 2>/dev/null; then
+            printf "\r%-80s\r" " "
+            printf "\r[100%%] %s - Completed (%s) " "$message" "$(format_size $current_size)"
+            break
+        fi
+        
+        # Update elapsed time
+        elapsed=$(($(date +%s) - start_time))
+        
+        # If file size hasn't changed in 5 seconds and process is not running, assume we're done
+        if [ "$current_size" -eq "$last_size" ] && [ "$elapsed" -gt 5 ] && [ -n "$pid" ] && ! kill -0 $pid 2>/dev/null; then
+            printf "\r%-80s\r" " "
+            printf "\r[100%%] %s - Completed (%s) " "$message" "$(format_size $current_size)"
+            break
+        fi
+        
+        sleep $interval
+    done
+    
+    printf "\n"
+}
+
+# Format time in seconds to readable format
+format_time() {
+    local seconds=$1
+    
+    if [ "$seconds" -lt 60 ]; then
+        echo "${seconds}s"
+    elif [ "$seconds" -lt 3600 ]; then
+        local m=$((seconds / 60))
+        local s=$((seconds % 60))
+        printf "%dm %ds" $m $s
+    else
+        local h=$((seconds / 3600))
+        local m=$(((seconds % 3600) / 60))
+        printf "%dh %dm" $h $m
     fi
 }
 

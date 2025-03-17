@@ -157,6 +157,20 @@ run_test "Cron test script syntax check" "bash -n \"$SCRIPT_DIR/test-cron.sh\""
 # Test 25: Run cron tests in dry-run mode
 run_test "Cron functionality dry-run test" "$SCRIPT_DIR/test-cron.sh"
 
+section "Tar Compatibility Tests"
+
+# Test 26: Verify tar compatibility test script exists
+run_test "Tar compatibility test script existence check" "test -f \"$SCRIPT_DIR/test-tar-compatibility.sh\""
+
+# Test 27: Check tar compatibility test script permissions
+run_test "Tar compatibility test script permissions check" "test -x \"$SCRIPT_DIR/test-tar-compatibility.sh\""
+
+# Test 28: Check tar compatibility test script syntax
+run_test "Tar compatibility test script syntax check" "bash -n \"$SCRIPT_DIR/test-tar-compatibility.sh\""
+
+# Test 29: Run tar compatibility tests
+run_test "Tar compatibility test" "$SCRIPT_DIR/test-tar-compatibility.sh"
+
 # Print summary
 echo -e "\n${CYAN}===== Test Summary =====${NC}"
 if [ $TEST_RESULT -eq 0 ]; then
