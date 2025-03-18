@@ -166,7 +166,25 @@ Use the cleanup utility to manage backup storage:
 
 # Clear all backup folders (with confirmation)
 ./cleanup.sh --clear-backups
+
+# Skip confirmation prompts (use carefully!)
+./cleanup.sh --clear-backups --yes
 ```
+
+### Backup Cleanup Options
+
+- **Standard Cleanup**: By default, keeps the 5 most recent backups and cleans up old log files
+- **Age-based Cleanup**: Remove logs older than a specified number of days
+- **Complete Backup Removal**: The `--clear-backups` option allows complete removal of all backup folders
+  - Each backup folder will require individual confirmation
+  - Default answer is "No" for safety (you must explicitly type "y" to confirm deletion)
+  - Useful when you need to reclaim disk space or start fresh
+  - WARNING: This permanently deletes all backup data - make sure you have copies if needed
+
+For safety, the script will always:
+- Confirm before deletion (unless `--yes` option is used)
+- Show you which files will be affected before proceeding
+- Allow cancellation at any point during the process
 
 ## Troubleshooting
 
