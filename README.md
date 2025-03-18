@@ -163,6 +163,9 @@ Use the cleanup utility to manage backup storage:
 
 # Remove logs older than 30 days
 ./cleanup.sh --days 30
+
+# Clear all backup folders (with confirmation)
+./cleanup.sh --clear-backups
 ```
 
 ## Troubleshooting
