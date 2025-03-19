@@ -9,13 +9,36 @@ source "$SCRIPT_DIR/utils.sh"
 source "$SCRIPT_DIR/ui.sh"
 source "$SCRIPT_DIR/fs.sh"
 
+# Check for custom backup directory
+CUSTOM_BACKUP_DIR=""
+IS_CUSTOM_BACKUP_DIR=false
+ORIGINAL_BACKUP_DIR="$DEFAULT_BACKUP_DIR"
+
+# Parse arguments to check for custom backup dir
+for arg in "$@"; do
+  if [[ "$prev_arg" == "--destination" || "$prev_arg" == "--dest" || "$prev_arg" == "-d" ]]; then
+    CUSTOM_BACKUP_DIR="$arg"
+    IS_CUSTOM_BACKUP_DIR=true
+  fi
+  prev_arg="$arg"
+done
+
 # Test configuration
 SOURCE_DIR="$DEFAULT_SOURCE_DIR"  # Can be overridden via parameter
 TEST_BACKUP_NAME="webdev_test_$DATE"
+# Always use internal test directory regardless of custom backup dir
 TEST_BACKUP_PATH="$TEST_DIR/$TEST_BACKUP_NAME"
 LOG_FILE="$TEST_BACKUP_PATH/test_log.log"
 STATS_FILE="$TEST_BACKUP_PATH/test_stats.txt"
 CUSTOM_SOURCE_DIR=""
+
+# Show warning if custom backup directory was specified
+if [ "$IS_CUSTOM_BACKUP_DIR" = true ]; then
+    echo -e "${YELLOW}WARNING: Custom backup directory detected: $CUSTOM_BACKUP_DIR${NC}"
+    echo -e "${YELLOW}For safety, all test files will be stored in the internal test directory: $TEST_DIR${NC}"
+    echo -e "${YELLOW}No test files will be written to the custom directory.${NC}"
+    echo ""
+fi
 
 # Error handling function
 handle_error() {

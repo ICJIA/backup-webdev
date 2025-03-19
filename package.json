@@ -1,13 +1,55 @@
 {
-  "name": "backup-webdev",
-  "version": "1.0.0",
-  "main": "index.js",
+  "name": "webdev-backup",
+  "version": "1.6.0",
+  "description": "A robust backup solution for web development projects",
+  "main": "webdev-backup.sh",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "./webdev-backup.sh",
+    "backup": "./backup.sh",
+    "backup:cloud": "./backup.sh --external",
+    "backup:dry": "./backup.sh --dry-run",
+    "backup:incremental": "./backup.sh --incremental",
+    "backup:differential": "./backup.sh --differential",
+    "backup:external": "./backup.sh --destination /path/to/custom/volume",
+    "test": "./run-tests.sh",
+    "test:backup": "./test-backup.sh",
+    "test:cron": "./test-cron.sh",
+    "test:tar": "./test-tar-compatibility.sh",
+    "cleanup": "./cleanup.sh",
+    "cleanup:dry": "./cleanup.sh --dry-run",
+    "cleanup:all": "./cleanup.sh --clear-backups",
+    "cleanup:logs": "./cleanup.sh --all-logs",
+    "restore": "./restore.sh",
+    "restore:list": "./restore.sh --list",
+    "cron": "./configure-cron.sh"
   },
-  "keywords": [],
+  "keywords": [
+    "backup",
+    "webdev",
+    "node_modules",
+    "tar",
+    "gzip",
+    "restoration",
+    "incremental",
+    "differential"
+  ],
   "author": "",
   "license": "MIT",
-  "description": "",
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  "engines": {
+    "node": ">=10.0.0"
+  },
+  "os": [
+    "linux",
+    "darwin"
+  ],
+  "private": true,
+  "bin": {
+    "webdev-backup": "./webdev-backup.sh",
+    "backup": "./backup.sh",
+    "restore": "./restore.sh",
+    "cleanup": "./cleanup.sh"
+  },
+  "directories": {
+    "test": "test"
+  }
 }

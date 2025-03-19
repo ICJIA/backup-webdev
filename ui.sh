@@ -208,15 +208,27 @@ display_backup_summary() {
     local location=$5
     local is_external=${6:-false}
     local cloud_provider=${7:-}
+    local start_time=${8:-}
+    local end_time=${9:-}
+    local duration_seconds=${10:-}
+    local duration_formatted=${11:-}
+    
+    local formatted_src_size=$(format_size "$src_size")
+    local formatted_backup_size=$(format_size "$backup_size")
     
     echo -e "\n${CYAN}===== Backup Summary =====${NC}"
-    echo "- Projects processed: $((successful + failed))"
-    echo "- Successfully backed up: $successful"
-    echo "- Failed backups: $failed"
-    echo "- Total source size: $(format_size "$src_size")"
-    echo "- Total backup size: $(format_size "$backup_size")"
+    echo "- Projects backed up: $successful"
     
-    if [ "$backup_size" -gt 0 ] && [ "$src_size" -gt 0 ]; then
+    if [ "$failed" -gt 0 ]; then
+        echo -e "- Projects failed: ${RED}$failed${NC}"
+    else
+        echo "- Projects failed: $failed"
+    fi
+    
+    echo "- Source data size: $formatted_src_size"
+    echo "- Compressed size: $formatted_backup_size"
+    
+    if [ "$src_size" -gt 0 ] && [ "$backup_size" -gt 0 ]; then
         echo "- Overall compression ratio: $(awk "BEGIN {printf \"%.1f\", ($src_size/$backup_size)}")x"
     fi
     
@@ -229,8 +241,17 @@ display_backup_summary() {
         echo -e "- Storage type: ${GREEN}INTERNAL${NC} (local storage)"
     fi
     
-    # Add timestamp
-    echo "- Completed at: $(date '+%Y-%m-%d %H:%M:%S')"
+    # Add time information
+    if [ -n "$start_time" ] && [ -n "$end_time" ]; then
+        echo "- Started at: $start_time"
+        echo "- Completed at: $end_time"
+        if [ -n "$duration_formatted" ]; then
+            echo "- Total duration: $duration_formatted ($duration_seconds seconds)"
+        fi
+    else
+        # Add timestamp for backward compatibility
+        echo "- Completed at: $(date '+%Y-%m-%d %H:%M:%S')"
+    fi
 }
 
 # Show advanced options menu

@@ -18,6 +18,7 @@ CUSTOM_BACKUP_DIR=""
 SKIP_CONFIRMATION=false
 DRY_RUN=false
 CLEAR_BACKUPS=false
+IS_DEFAULT_BACKUP_DIR=true
 
 # Help function
 show_help() {
@@ -84,6 +85,8 @@ while [[ $# -gt 0 ]]; do
         -t|--target)
             if [[ -n "$2" && "$2" != --* ]]; then
                 CUSTOM_BACKUP_DIR="$2"
+                # Mark that we're using a custom directory
+                IS_DEFAULT_BACKUP_DIR=false
                 shift 2
             else
                 echo -e "${RED}Error: Target argument requires a directory path${NC}"
@@ -487,8 +490,12 @@ fi
 # Clean up backup directories - This section now runs independently
 section "Cleaning Backup Directories"
 
-# Handle clear backups option
-if [ "$CLEAR_BACKUPS" = true ]; then
+# If using a custom backup directory, warn and skip backup cleaning
+if [ "$IS_DEFAULT_BACKUP_DIR" = false ]; then
+    echo -e "${YELLOW}WARNING: Using a custom backup directory: $BACKUP_DIR${NC}"
+    echo -e "${YELLOW}Skipping backup cleaning for safety. Only default backup directories are cleaned automatically.${NC}"
+elif [ "$CLEAR_BACKUPS" = true ]; then
+    # Handle clear backups option - only for default backup directory
     echo -e "${YELLOW}WARNING: You've requested to clear all backup folders in: $BACKUP_DIR${NC}"
     
     # Get the count of backup folders

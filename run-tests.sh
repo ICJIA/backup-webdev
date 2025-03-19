@@ -1,13 +1,74 @@
 #!/bin/bash
-# run-tests.sh - Comprehensive test suite for WebDev Backup Tool
-# This script runs all tests for the backup tool in a single command
+# run-tests.sh - Comprehensive test runner for WebDev Backup Tool
 
 # Source the shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/utils.sh"
 source "$SCRIPT_DIR/ui.sh"
-source "$SCRIPT_DIR/fs.sh"
+
+# Check for custom backup directory
+CUSTOM_BACKUP_DIR=""
+for ((i=1; i<=$#; i++)); do
+    if [ "${!i}" = "--destination" ] || [ "${!i}" = "--dest" ] || [ "${!i}" = "-d" ]; then
+        j=$((i+1))
+        if [ $j -le $# ]; then
+            CUSTOM_BACKUP_DIR="${!j}"
+        fi
+    fi
+done
+
+# Set up test environment
+LOG_FILE="$TEST_DIR/test_run_$(date +%Y%m%d_%H%M%S).log"
+TEST_RESULT=0
+
+# Create test directory if it doesn't exist
+mkdir -p "$TEST_DIR" || { echo "Failed to create test directory"; exit 1; }
+
+# Show warning if custom backup directory was specified
+if [ -n "$CUSTOM_BACKUP_DIR" ]; then
+    echo -e "${YELLOW}WARNING: Custom backup directory detected: $CUSTOM_BACKUP_DIR${NC}"
+    echo -e "${YELLOW}For safety, all test files will be stored in internal directories:${NC}"
+    echo -e "${YELLOW}  - Test files: $TEST_DIR${NC}"
+    echo -e "${YELLOW}  - Log files: $LOGS_DIR${NC}"
+    echo -e "${YELLOW}No test files will be written to the custom directory.${NC}"
+    echo ""
+fi
+
+# Function to run a test and track its result
+run_test() {
+    local description="$1"
+    local command="$2"
+    local timeout=${3:-30}  # Default 30 second timeout
+    
+    echo -e "${CYAN}Testing: $description${NC}"
+    
+    # Log the test
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Running test: $description" >> "$LOG_FILE"
+    echo "Command: $command" >> "$LOG_FILE"
+    
+    # We'll use our own internal directories regardless of any custom target
+    if [[ "$command" == *"--destination"* || "$command" == *"--dest"* || "$command" == *"-d"* ]]; then
+        echo -e "${YELLOW}Note: Test has custom destination, but test data will remain in internal directories${NC}"
+    fi
+    
+    # Run the command with timeout
+    timeout "$timeout" bash -c "$command" >> "$LOG_FILE" 2>&1
+    local result=$?
+    
+    # Handle the result
+    if [ $result -eq 0 ]; then
+        echo -e "  ${GREEN}✓ Test passed: $description${NC}"
+        echo "Result: PASS" >> "$LOG_FILE"
+    else
+        echo -e "  ${RED}✗ Test failed: $description${NC}"
+        echo "Result: FAIL (exit code: $result)" >> "$LOG_FILE"
+        TEST_RESULT=1
+    fi
+    
+    echo "" >> "$LOG_FILE"
+    return $result
+}
 
 # Test configuration
 LOG_FILE="$TEST_DIR/test_run_$DATE.log"

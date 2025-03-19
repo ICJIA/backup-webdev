@@ -77,34 +77,32 @@ read -p "Enter your choice [1-9/q]: " choice
 case "$choice" in
     1)
         echo -e "\n${CYAN}Select backup storage type:${NC}"
-        echo "1) Internal (Local Storage)"
-        echo "2) External (Cloud Storage)"
-        read -p "Enter your choice [1/2]: " storage_choice
+        echo "1) Local Project Storage (Default: $(realpath "${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"))"
+        echo "2) External Volume Storage (Custom local path)"
+        echo "3) Cloud Storage (DigitalOcean, AWS, etc.)"
+        read -p "Enter your choice [1/2/3]: " storage_choice
         
         case "$storage_choice" in
             1)
-                echo -e "\n${GREEN}Using INTERNAL storage (local backup)${NC}"
-                echo -e "Default path: ${DEFAULT_BACKUP_DIR}\n"
-                read -p "Use custom backup path? [y/N] " custom_path_choice
-                
-                if [[ "$custom_path_choice" =~ ^[Yy]$ ]]; then
-                    read -p "Enter custom backup path: " custom_path
-                    if [[ -n "$custom_path" ]]; then
-                        echo -e "\n${GREEN}Using custom backup path: $custom_path${NC}\n"
-                        sleep 1
-                        "$SCRIPT_DIR/backup.sh" --dest "$custom_path" "$@"
-                    else
-                        echo -e "\n${YELLOW}No path entered. Using default path: ${GREEN}$DEFAULT_BACKUP_DIR${NC}\n"
-                        sleep 1
-                        "$SCRIPT_DIR/backup.sh" "$@"
-                    fi
+                echo -e "\n${GREEN}Using Local Project Storage${NC}"
+                echo -e "Path: ${DEFAULT_BACKUP_DIR}\n"
+                sleep 1
+                "$SCRIPT_DIR/backup.sh" "$@"
+                ;;
+            2)
+                echo -e "\n${CYAN}Using External Volume Storage${NC}"
+                read -p "Enter external volume path: " custom_path
+                if [[ -n "$custom_path" ]]; then
+                    echo -e "\n${GREEN}Using external volume: $custom_path${NC}\n"
+                    sleep 1
+                    "$SCRIPT_DIR/backup.sh" --dest "$custom_path" "$@"
                 else
-                    echo -e "\n${GREEN}Using default backup path: ${YELLOW}$DEFAULT_BACKUP_DIR${NC}\n"
+                    echo -e "\n${YELLOW}No path entered. Using default path: ${GREEN}$DEFAULT_BACKUP_DIR${NC}\n"
                     sleep 1
                     "$SCRIPT_DIR/backup.sh" "$@"
                 fi
                 ;;
-            2)
+            3)
                 echo -e "\n${CYAN}Select cloud provider:${NC}"
                 echo "1) DigitalOcean Spaces (default)"
                 echo "2) AWS S3"
@@ -114,22 +112,22 @@ case "$choice" in
                 
                 case "$cloud_choice" in
                     1|"")
-                        echo -e "\n${CYAN}Using EXTERNAL storage (DigitalOcean Spaces)${NC}\n"
+                        echo -e "\n${CYAN}Using CLOUD STORAGE (DigitalOcean Spaces)${NC}\n"
                         sleep 1
                         "$SCRIPT_DIR/backup.sh" --external --cloud do "$@"
                         ;;
                     2)
-                        echo -e "\n${CYAN}Using EXTERNAL storage (AWS S3)${NC}\n"
+                        echo -e "\n${CYAN}Using CLOUD STORAGE (AWS S3)${NC}\n"
                         sleep 1
                         "$SCRIPT_DIR/backup.sh" --external --cloud aws "$@"
                         ;;
                     3)
-                        echo -e "\n${CYAN}Using EXTERNAL storage (Dropbox)${NC}\n"
+                        echo -e "\n${CYAN}Using CLOUD STORAGE (Dropbox)${NC}\n"
                         sleep 1
                         "$SCRIPT_DIR/backup.sh" --external --cloud dropbox "$@"
                         ;;
                     4)
-                        echo -e "\n${CYAN}Using EXTERNAL storage (Google Drive)${NC}\n"
+                        echo -e "\n${CYAN}Using CLOUD STORAGE (Google Drive)${NC}\n"
                         sleep 1
                         "$SCRIPT_DIR/backup.sh" --external --cloud gdrive "$@"
                         ;;
@@ -141,7 +139,7 @@ case "$choice" in
                 esac
                 ;;
             *)
-                echo -e "\n${YELLOW}Invalid choice. Using internal storage.${NC}\n"
+                echo -e "\n${YELLOW}Invalid choice. Using Local Project Storage.${NC}\n"
                 sleep 1
                 "$SCRIPT_DIR/backup.sh" "$@"
                 ;;

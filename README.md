@@ -76,6 +76,27 @@ For DigitalOcean Spaces (recommended):
    ```
 4. Install AWS CLI: `sudo apt install -y awscli` (or equivalent)
 
+## Storage Options
+
+WebDev Backup Tool offers three storage options:
+
+1. **Local Project Storage**: Backups stored in the default `./backups/` directory within the project (fastest)
+
+   - Command: `./backup.sh`
+   - Current default path: `/mnt/d/backups`
+
+2. **External Volume Storage**: Backups stored on an external drive or network volume (good for archiving)
+
+   - Command: `./backup.sh --destination /path/to/external/storage`
+   - Example: `./backup.sh --destination /mnt/backup_drive/webdev_backups`
+
+3. **Cloud Storage**: Backups stored on cloud services (best for offsite disaster recovery)
+   - Command: `./backup.sh --external --cloud [provider]`
+   - Supported providers: DigitalOcean Spaces (do), AWS S3 (aws), Dropbox, Google Drive (gdrive)
+   - Example: `./backup.sh --external --cloud do`
+
+Choose the option that best fits your backup strategy. Many users implement multiple tiers by using local backups for daily use and cloud storage for weekly archives.
+
 ## Usage
 
 ### Interactive Launcher
@@ -182,6 +203,7 @@ Use the cleanup utility to manage backup storage:
   - WARNING: This permanently deletes all backup data - make sure you have copies if needed
 
 For safety, the script will always:
+
 - Confirm before deletion (unless `--yes` option is used)
 - Show you which files will be affected before proceeding
 - Allow cancellation at any point during the process
@@ -199,6 +221,10 @@ For safety, the script will always:
 1. Run tests: `./run-tests.sh`
 2. Check logs: `logs/backup_history.log`
 3. Test in dry-run mode: `./backup.sh --dry-run`
+
+> **Note:** For safety, all test files are always stored in the internal test directories,
+> even when a custom backup destination is specified. This prevents tests from writing
+> to external drives or network storage.
 
 ## License
 

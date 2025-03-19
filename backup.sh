@@ -187,6 +187,8 @@ done
 
 # Record start time
 START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+# Also record the start time in seconds since epoch for duration calculation
+START_TIME_SECONDS=$(date +%s)
 
 # Start logging
 log "Starting backup script" "$LOG_FILE" "$SILENT_MODE"
@@ -288,12 +290,20 @@ if [ "$SILENT_MODE" = false ]; then
     echo -e "Backup Type: ${BACKUP_TYPE^}"
     echo -e "Compression Level: $COMPRESSION_LEVEL"
     
-    # Show storage information
+    # Show storage information and path in a more visible way
+    echo -e "${YELLOW}=============================================${NC}"
     if [ "$EXTERNAL_BACKUP" = true ]; then
-        echo -e "Storage: ${CYAN}EXTERNAL${NC} (${CLOUD_PROVIDER} cloud provider)"
+        echo -e "${CYAN}STORAGE TYPE: CLOUD ($CLOUD_PROVIDER)${NC}"
+        echo -e "${CYAN}BACKUP PATH:  Cloud provider: $CLOUD_PROVIDER${NC}"
     else
-        echo -e "Storage: ${GREEN}INTERNAL${NC} (local storage)"
+        if [ "$BACKUP_DIR" = "$DEFAULT_BACKUP_DIR" ]; then
+            echo -e "${GREEN}STORAGE TYPE: LOCAL PROJECT STORAGE (Default)${NC}"
+        else
+            echo -e "${GREEN}STORAGE TYPE: EXTERNAL VOLUME STORAGE${NC}"
+        fi
+        echo -e "${GREEN}BACKUP PATH:  $FULL_BACKUP_PATH${NC}"
     fi
+    echo -e "${YELLOW}=============================================${NC}"
     
     echo -e "Note: Each project's node_modules directory will be excluded"
     if [ "$VERIFY_BACKUP" = true ]; then
@@ -516,6 +526,14 @@ done
 
 # Record end time
 END_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+# Also record the end time in seconds since epoch for duration calculation
+END_TIME_SECONDS=$(date +%s)
+
+# Calculate duration in seconds
+DURATION_SECONDS=$((END_TIME_SECONDS - START_TIME_SECONDS))
+
+# Format duration in human-readable form
+DURATION_FORMATTED=$(printf "%02d:%02d:%02d" $((DURATION_SECONDS/3600)) $((DURATION_SECONDS%3600/60)) $((DURATION_SECONDS%60)))
 
 # Format total size
 TOTAL_FORMATTED_SIZE=$(format_size "$TOTAL_BACKUP_SIZE")
@@ -562,7 +580,33 @@ if [ "$SILENT_MODE" = false ]; then
         "$TOTAL_BACKUP_SIZE" \
         "$FULL_BACKUP_PATH" \
         "$EXTERNAL_BACKUP" \
-        "$CLOUD_PROVIDER"
+        "$CLOUD_PROVIDER" \
+        "$START_TIME" \
+        "$END_TIME" \
+        "$DURATION_SECONDS" \
+        "$DURATION_FORMATTED"
+fi
+
+# At the end of the process, also display the backup path clearly
+if [ "$SILENT_MODE" = false ]; then
+    # After the summary, emphasize the backup location
+    echo -e "\n${YELLOW}=============================================${NC}"
+    echo -e "${GREEN}BACKUP COMPLETE${NC}"
+    if [ "$EXTERNAL_BACKUP" = true ]; then
+        echo -e "${CYAN}STORAGE TYPE: CLOUD ($CLOUD_PROVIDER)${NC}"
+    else
+        if [ "$BACKUP_DIR" = "$DEFAULT_BACKUP_DIR" ]; then
+            echo -e "${GREEN}STORAGE TYPE: LOCAL PROJECT STORAGE (Default)${NC}"
+        else
+            echo -e "${GREEN}STORAGE TYPE: EXTERNAL VOLUME STORAGE${NC}"
+        fi
+    fi
+    echo -e "${GREEN}BACKUP PATH:  $FULL_BACKUP_PATH${NC}"
+    echo -e "${YELLOW}TIME INFORMATION:${NC}"
+    echo -e "  Started:  $START_TIME"
+    echo -e "  Finished: $END_TIME"
+    echo -e "  Duration: $DURATION_FORMATTED ($DURATION_SECONDS seconds)"
+    echo -e "${YELLOW}=============================================${NC}"
 fi
 
 # Generate HTML report
@@ -648,6 +692,9 @@ BACKUP_ENTRY+="  Projects: ${SUCCESSFUL_PROJECTS} succeeded, ${FAILED_PROJECTS} 
 BACKUP_ENTRY+="  Total Size: ${TOTAL_FORMATTED_SIZE}\n"
 BACKUP_ENTRY+="  Source: ${SOURCE_DIR}\n"
 BACKUP_ENTRY+="  Destination: ${FULL_BACKUP_PATH}\n"
+BACKUP_ENTRY+="  Started: ${START_TIME}\n"
+BACKUP_ENTRY+="  Finished: ${END_TIME}\n" 
+BACKUP_ENTRY+="  Duration: ${DURATION_FORMATTED} (${DURATION_SECONDS} seconds)\n"
 
 # Add more details for failed backups
 if [ "$FAILED_PROJECTS" -gt 0 ]; then
