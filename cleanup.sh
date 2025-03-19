@@ -4,10 +4,10 @@
 
 # Source the shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../core/config.sh"
-source "$SCRIPT_DIR/../utils/utils.sh"
-source "$SCRIPT_DIR/../ui/ui.sh"
-source "$SCRIPT_DIR/../core/fs.sh"
+source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/utils.sh"
+source "$SCRIPT_DIR/ui.sh"
+source "$SCRIPT_DIR/fs.sh"
 
 # Log cleaning options
 LOGS_BACKUP=false

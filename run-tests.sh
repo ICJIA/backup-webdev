@@ -3,8 +3,8 @@
 
 # Get the script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../core/config.sh"
-source "$SCRIPT_DIR/../utils/utils.sh"
+source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/utils.sh"
 
 # Set defaults
 TEST_SUITE="all"

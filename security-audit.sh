@@ -4,7 +4,7 @@
 
 # Get the script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../utils/utils.sh"
+source "$SCRIPT_DIR/utils.sh"
 
 # Banner
 echo -e "${CYAN}===== WebDev Backup Tool Security Audit =====${NC}"

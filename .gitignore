@@ -43,6 +43,7 @@ secrets.sh
 *_credentials.json
 .api_keys
 .secrets/
+.env
 
 # Credentials and secrets
 .secrets.checksum

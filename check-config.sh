@@ -4,16 +4,8 @@
 
 # Get the script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Set constants for colors first
-CYAN="\033[0;36m"
-GREEN="\033[0;32m"
-YELLOW="\033[0;33m"
-RED="\033[0;31m"
-NC="\033[0m" # No Color
-
-# Source paths with absolute paths to be sure
-source "/home/cschw/backup-webdev/src/core/config.sh"
-source "/home/cschw/backup-webdev/src/utils/utils.sh"
+source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/utils.sh"
 
 # Check for required utilities
 echo -e "${CYAN}===== WebDev Backup Tool Configuration Check =====${NC}"
