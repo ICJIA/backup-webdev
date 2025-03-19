@@ -1,231 +1,195 @@
 # WebDev Backup Tool
 
-A bash-based backup solution specifically designed for web development projects. It creates efficient, space-optimized backups while intelligently excluding resource-intensive directories like `node_modules`.
-
-## Origin
-
-This tool was built after losing work due to a hard drive failure. It provides a reliable way to back up repositories from a `/webdev/` directory, understanding what files to include and exclude in web development projects. It supports both local and cloud storage options.
+A robust backup solution for web development projects that supports multiple source directories, incremental backups, compression, integrity verification, and cloud storage integration.
 
 ## Features
 
-- **Smart Project Selection**: Choose which projects to backup
-- **Node Modules Exclusion**: Automatically excludes `node_modules` directories to save space
-- **Local and Cloud Storage**: Back up locally or to cloud providers (DigitalOcean Spaces, AWS S3, Google Drive, Dropbox)
-- **Incremental Backups**: Only back up files that have changed since the last backup
-- **Interactive Dashboard**: Real-time progress display with project sizes
-- **Automated Scheduling**: Configure recurring backups with cron
-- **Restore Capabilities**: Easily restore complete backups or specific files
-
-## ⚡️ Quick Run
-
-1. **Setup**:
-
-   ```bash
-   # Clone the repository
-   git clone https://github.com/yourusername/webdev-backup.git
-   cd webdev-backup
-
-   # Make scripts executable
-   chmod +x *.sh
-
-   # Copy and edit the secrets template for cloud storage
-   cp secrets.sh.example secrets.sh
-   nano secrets.sh
-   ```
-
-2. **Run**:
-
-   ```bash
-   # Interactive launcher (recommended for first use)
-   ./webdev-backup.sh
-
-   # Direct backup to local storage
-   ./backup.sh
-
-   # Direct backup to cloud (requires configured secrets.sh)
-   ./backup.sh --external
-   ```
-
-That's it! The tool will automatically:
-
-- Detect your web projects
-- Exclude `node_modules` directories
-- Create compressed backups in `./backups/` (created automatically)
+- **Multi-Directory Backup**: Back up projects from multiple source directories
+- **Flexible Backup Types**: Full, incremental, or differential backups
+- **Compression**: Optimized compression with multi-threading support (via pigz)
+- **Verification**: Integrity verification of backup archives
+- **Exclusion Rules**: Automatically excludes node_modules and other large dependencies
+- **Cloud Integration**: Upload backups to AWS S3, DigitalOcean Spaces, Dropbox, or Google Drive
+- **Reporting**: Detailed HTML reports and email notifications
+- **Dashboard**: Visual dashboard for backup statistics and forecasting
+- **Restore**: Simple project restoration with preview capability
+- **Security**: Built-in security features and encryption support
 
 ## Installation
 
-### Basic Configuration
+### Requirements
 
-- **Local storage**: By default, backups are stored in `./backups/` within the project directory
-- **External storage**: Configure cloud provider credentials in `secrets.sh`
-- **Source directory**: Automatically detected, or specify with `--source` option
+- Bash shell (version 4.0 or later)
+- tar, gzip (required)
+- pigz (optional, for multi-threaded compression)
+- gnuplot (optional, for visualization)
+- AWS CLI (optional, for cloud storage)
 
-### Cloud Storage Setup
+### Setup
 
-For DigitalOcean Spaces (recommended):
+1. Clone the repository:
 
-1. Create a Spaces bucket in your DigitalOcean account
-2. Generate API credentials in your DigitalOcean dashboard
-3. Add to `secrets.sh`:
    ```bash
-   DO_SPACES_KEY="your-key"
-   DO_SPACES_SECRET="your-secret"
-   DO_SPACES_ENDPOINT="nyc3.digitaloceanspaces.com"
-   DO_SPACES_BUCKET="your-bucket"
-   DO_SPACES_REGION="nyc3"
+   git clone https://github.com/yourusername/backup-webdev.git
    ```
-4. Install AWS CLI: `sudo apt install -y awscli` (or equivalent)
 
-## Storage Options
+2. Make the scripts executable:
 
-WebDev Backup Tool offers three storage options:
+   ```bash
+   cd backup-webdev
+   chmod +x *.sh
+   ```
 
-1. **Local Project Storage**: Backups stored in the default `./backups/` directory within the project (fastest)
+3. Set up shell alias for easy access:
 
-   - Command: `./backup.sh`
-   - Current default path: `/mnt/d/backups`
+   ```bash
+   ./setup-alias.sh
+   ```
 
-2. **External Volume Storage**: Backups stored on an external drive or network volume (good for archiving)
+4. Verify installation and configuration:
+   ```bash
+   ./check-config.sh
+   ```
 
-   - Command: `./backup.sh --destination /path/to/external/storage`
-   - Example: `./backup.sh --destination /mnt/backup_drive/webdev_backups`
+## Basic Usage
 
-3. **Cloud Storage**: Backups stored on cloud services (best for offsite disaster recovery)
-   - Command: `./backup.sh --external --cloud [provider]`
-   - Supported providers: DigitalOcean Spaces (do), AWS S3 (aws), Dropbox, Google Drive (gdrive)
-   - Example: `./backup.sh --external --cloud do`
+### Interactive Mode
 
-Choose the option that best fits your backup strategy. Many users implement multiple tiers by using local backups for daily use and cloud storage for weekly archives.
-
-## Usage
-
-### Interactive Launcher
+Run the tool in interactive mode:
 
 ```bash
 ./webdev-backup.sh
 ```
 
-This displays a menu with options:
+### Command-Line Options
 
-- Run Backup (Internal/External)
-- Run Tests
-- Configure Automated Backups
-- View Backup History
-- And more...
-
-### Direct Commands
+Run a silent backup with default settings:
 
 ```bash
-# Local backup
-./backup.sh
-
-# Cloud backup
-./backup.sh --external
-
-# Specify source and destination
-./backup.sh --source /path/to/webdev --destination /path/to/backups
-
-# Silent mode (for cron jobs)
 ./backup.sh --silent
-
-# Incremental backup
-./backup.sh --incremental
-
-# Test functionality
-./run-tests.sh
 ```
 
-### Internal vs External Backup
-
-**Internal Backup**: Stores backups locally on your system
-
-- Fast and convenient
-- No internet connection required
-- Good for daily development backups
-- Command: `./backup.sh`
-
-**External Backup**: Stores backups in the cloud
-
-- Uses DigitalOcean Spaces (or other configured provider)
-- Provides off-site backup for disaster recovery
-- Requires configured credentials
-- Command: `./backup.sh --external`
-
-## Automated Backups
-
-Set up recurring backups with:
+Run an incremental backup with verification:
 
 ```bash
-./configure-cron.sh
+./backup.sh --incremental --verify
 ```
 
-Or select the option from the launcher menu.
-
-## Restore Functionality
+Back up a specific directory:
 
 ```bash
-# List available backups
-./restore.sh --list
-
-# Restore the latest backup
-./restore.sh
-
-# Restore a specific project
-./restore.sh --project myproject
+./backup.sh --source ~/projects
 ```
 
-## Maintenance
+## Advanced Usage
 
-Use the cleanup utility to manage backup storage:
+### Multi-Directory Backups
+
+Back up multiple source directories:
 
 ```bash
-# Standard cleanup (keeps 5 most recent backups)
-./cleanup.sh
-
-# Remove logs older than 30 days
-./cleanup.sh --days 30
-
-# Clear all backup folders (with confirmation)
-./cleanup.sh --clear-backups
-
-# Skip confirmation prompts (use carefully!)
-./cleanup.sh --clear-backups --yes
+./backup.sh --sources ~/webdev,~/inform6 --verify
 ```
 
-### Backup Cleanup Options
+### Differential Backups
 
-- **Standard Cleanup**: By default, keeps the 5 most recent backups and cleans up old log files
-- **Age-based Cleanup**: Remove logs older than a specified number of days
-- **Complete Backup Removal**: The `--clear-backups` option allows complete removal of all backup folders
-  - Each backup folder will require individual confirmation
-  - Default answer is "No" for safety (you must explicitly type "y" to confirm deletion)
-  - Useful when you need to reclaim disk space or start fresh
-  - WARNING: This permanently deletes all backup data - make sure you have copies if needed
+Create differential backups (changes since last full backup):
 
-For safety, the script will always:
+```bash
+./backup.sh --differential
+```
 
-- Confirm before deletion (unless `--yes` option is used)
-- Show you which files will be affected before proceeding
-- Allow cancellation at any point during the process
+### Cloud Storage
 
-## Troubleshooting
+Upload backup to cloud storage:
 
-### Common Issues
+```bash
+./backup.sh --cloud do --silent
+```
 
-- **"Source directory does not exist"**: Verify path or use `--source`
-- **"Cannot write to backup directory"**: Check permissions
-- **"Failed to upload to cloud"**: Verify credentials in `secrets.sh`
+### Restore Backups
 
-### Diagnostics
+Restore the latest backup:
 
-1. Run tests: `./run-tests.sh`
-2. Check logs: `logs/backup_history.log`
-3. Test in dry-run mode: `./backup.sh --dry-run`
+```bash
+./restore.sh --latest
+```
 
-> **Note:** For safety, all test files are always stored in the internal test directories,
-> even when a custom backup destination is specified. This prevents tests from writing
-> to external drives or network storage.
+Restore a specific project from backup:
+
+```bash
+./restore.sh --project myproject --dest ~/restored
+```
+
+### Run Tests
+
+Run all tests to verify system:
+
+```bash
+./run-all-tests.sh
+```
+
+Run specific tests:
+
+```bash
+./test-backup.sh --quick
+```
+
+## Configuration
+
+The configuration is stored in `config.sh`. You can modify default settings:
+
+- Source directories (`DEFAULT_SOURCE_DIRS`)
+- Backup destination (`DEFAULT_BACKUP_DIR`)
+- Compression level
+- Email notification settings
+- Cloud storage preferences
+
+## File Structure
+
+- `backup.sh` - Main backup script
+- `webdev-backup.sh` - Interactive launcher interface
+- `restore.sh` - Backup restoration script
+- `config.sh` - Configuration settings
+- `utils.sh` - Utility functions
+- `ui.sh` - User interface functions
+- `fs.sh` - Filesystem operations
+- `reporting.sh` - Reporting functions
+- `check-config.sh` - Configuration verification
+- `security-audit.sh` - Security audit script
+- `encryption.sh` - Optional encryption functions
+- `run-all-tests.sh` - Comprehensive test suite
+- `dirs-status.sh` - Source directory status report
+
+## Adding a New Source Directory
+
+You can easily add new source directories:
+
+1. Through the menu system: Select "9) Manage Source Directories" and "1) Add new source directory"
+2. Directly edit `config.sh` and add to the `DEFAULT_SOURCE_DIRS` array
+3. Use the `--sources` command-line option with comma-separated paths
+
+## Security
+
+For secure operations:
+
+1. Run `secure-permissions.sh` to set proper file permissions
+2. Run `secure-secrets.sh` to set up secure credential storage
+3. Run `security-audit.sh` periodically to check for issues
+
+## Testing
+
+The project includes a comprehensive test suite:
+
+```bash
+./run-all-tests.sh  # Run all tests
+./run-tests.sh --unit  # Run only unit tests
+```
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under MIT License - see LICENSE file for details.
+
+## Credits
+
+WebDev Backup Tool - Created by Your Name

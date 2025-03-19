@@ -4,11 +4,9 @@
 
 # Source the shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Use absolute paths to be certain
-source "/home/cschw/backup-webdev/src/utils/utils.sh"
-source "/home/cschw/backup-webdev/src/ui/ui.sh"
-source "/home/cschw/backup-webdev/src/core/fs.sh"
+source "$SCRIPT_DIR/../utils/utils.sh"
+source "$SCRIPT_DIR/../ui/ui.sh"
+source "$SCRIPT_DIR/../core/fs.sh"
 
 # Default values
 LIST_BACKUPS=false

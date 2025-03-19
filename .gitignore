@@ -43,3 +43,9 @@ secrets.sh
 *_credentials.json
 .api_keys
 .secrets/
+
+# Credentials and secrets
+.secrets.checksum
+
+# Allow example files
+!*.example

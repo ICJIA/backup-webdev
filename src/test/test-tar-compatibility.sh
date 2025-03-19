@@ -3,10 +3,10 @@
 
 # Source the shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/config.sh"
-source "$SCRIPT_DIR/utils.sh"
-source "$SCRIPT_DIR/ui.sh"
-source "$SCRIPT_DIR/fs.sh"
+source "$SCRIPT_DIR/../core/config.sh"
+source "$SCRIPT_DIR/../utils/utils.sh"
+source "$SCRIPT_DIR/../ui/ui.sh"
+source "$SCRIPT_DIR/../core/fs.sh"
 
 # Create test directory
 TEST_RUN_DIR="$TEST_DIR/test_tar_$(date +$DATE_FORMAT)"

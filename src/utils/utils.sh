@@ -1,240 +1,114 @@
 #!/bin/bash
-# ===============================================================================
-# utils.sh - General purpose utility functions for WebDev Backup Tool
-# ===============================================================================
-#
-# @file            utils.sh
-# @description     Provides core utility functions used throughout the application
-# @author          Claude
-# @version         1.6.0
-#
-# This file contains shared utility functions that are used by multiple scripts
-# in the WebDev Backup Tool. These functions are general purpose and not specific
-# to any particular domain of the application.
-# ===============================================================================
+# utils.sh - Shared utility functions for backup-webdev
+# This file contains common functions used across all scripts
 
-# Set the project root directory
-SCRIPT_DIR_UTILS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Source the shared configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../core/config.sh"
 
-# Import core configuration (will set paths correctly)
-if [[ "$SCRIPT_DIR_UTILS" == */src/utils ]]; then
-    source "$SCRIPT_DIR_UTILS/../core/config.sh"
-else
-    source "$SCRIPT_DIR_UTILS/config.sh"
+# Source secrets file if it exists (contains API keys and sensitive data)
+if [ -f "$SCRIPT_DIR/secrets.sh" ]; then
+    source "$SCRIPT_DIR/secrets.sh"
 fi
 
-# ===============================================================================
-# Terminal Colors
-# ===============================================================================
+# Terminal colors for better output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+WHITE='\033[1;37m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
 
-# Define terminal colors
-RED="\033[0;31m"
-GREEN="\033[0;32m"
-YELLOW="\033[0;33m"
-BLUE="\033[0;34m"
-MAGENTA="\033[0;35m"
-CYAN="\033[0;36m"
-NC="\033[0m"  # No Color
-
-# ===============================================================================
-# File System Functions
-# ===============================================================================
-
-/**
- * @function       find_projects
- * @description    Find all project directories in the given path
- * @param {string} source_dir - Directory to search for projects
- * @param {number} depth - How deep to search for directories (default: 1)
- * @returns        List of project directories
- */
-find_projects() {
-    local source_dir=$1
-    local depth=${2:-1}
-    
-    # Ensure source directory exists
-    if [ ! -d "$source_dir" ]; then
-        return 1
-    fi
-    
-    # Find all directories up to the specified depth, excluding hidden directories
-    find "$source_dir" -maxdepth $depth -type d -not -path "*/\.*" | grep -v "/$" | sort
-}
-
-/**
- * @function       get_directory_size
- * @description    Calculate the size of a directory, optionally excluding certain directories
- * @param {string} dir - Directory to calculate size for
- * @param {string} exclude - Optional pattern to exclude (e.g., "node_modules")
- * @returns        Size in bytes
- */
-get_directory_size() {
-    local dir=$1
-    local exclude=$2
-    
-    if [ -n "$exclude" ]; then
-        # With exclusion pattern
-        du -sb --exclude="$exclude" "$dir" 2>/dev/null | cut -f1
-    else
-        # Without exclusion
-        du -sb "$dir" 2>/dev/null | cut -f1
-    fi
-}
-
-/**
- * @function       format_size
- * @description    Format a size in bytes to a human-readable format (B, KB, MB, GB, TB)
- * @param {number} size - Size in bytes
- * @returns        Formatted size string
- */
+# Format size function (converts bytes to human readable format)
 format_size() {
     local size=$1
-    
-    if [ -z "$size" ] || ! [[ "$size" =~ ^[0-9]+$ ]]; then
-        echo "0 B"
-        return
-    fi
-    
-    if [ "$size" -lt 1024 ]; then
-        echo "$size B"
-    elif [ "$size" -lt 1048576 ]; then
-        echo "$(awk "BEGIN {printf \"%.2f\", $size/1024}") KB"
-    elif [ "$size" -lt 1073741824 ]; then
-        echo "$(awk "BEGIN {printf \"%.2f\", $size/1048576}") MB"
-    elif [ "$size" -lt 1099511627776 ]; then
-        echo "$(awk "BEGIN {printf \"%.2f\", $size/1073741824}") GB"
-    else
-        echo "$(awk "BEGIN {printf \"%.2f\", $size/1099511627776}") TB"
-    fi
+    awk '
+        BEGIN {
+            suffix[1] = "B"
+            suffix[2] = "KB"
+            suffix[3] = "MB"
+            suffix[4] = "GB"
+            suffix[5] = "TB"
+        }
+        {
+            for (i = 5; i > 0; i--) {
+                if ($1 >= 1024 ^ (i - 1)) {
+                    printf("%.2f %s", $1 / (1024 ^ (i - 1)), suffix[i])
+                    break
+                }
+            }
+        }
+    ' <<< "$size"
 }
 
-/**
- * @function       verify_directory
- * @description    Verify a directory exists and is writable, optionally create it
- * @param {string} dir - Directory to verify
- * @param {string} label - Label for error messages
- * @param {boolean} create - Whether to create the directory if it doesn't exist
- * @returns        0 on success, 1 on failure
- */
-verify_directory() {
-    local dir=$1
-    local label=${2:-"Directory"}
-    local create=${3:-false}
-    
-    # Check if directory exists
-    if [ ! -d "$dir" ]; then
-        if [ "$create" = true ]; then
-            # Create directory if requested
-            if ! mkdir -p "$dir" 2>/dev/null; then
-                echo -e "${RED}ERROR: Failed to create $label: $dir${NC}"
-                return 1
-            fi
-            echo -e "${GREEN}✓ Created $label: $dir${NC}"
-        else
-            echo -e "${RED}ERROR: $label does not exist: $dir${NC}"
-            return 1
-        fi
-    fi
-    
-    # Check if directory is writable
-    if [ ! -w "$dir" ]; then
-        echo -e "${RED}ERROR: $label is not writable: $dir${NC}"
-        return 1
-    fi
-    
-    # Create a test file to verify filesystem write capability
-    local test_file="$dir/.write_test_$$"
-    if ! touch "$test_file" 2>/dev/null; then
-        echo -e "${RED}ERROR: Cannot write to $label: $dir${NC}"
-        echo -e "${RED}The filesystem may be read-only or full.${NC}"
-        return 1
-    else
-        rm -f "$test_file"
-    fi
-    
-    echo -e "${GREEN}✓ $label directory is accessible and writable: $dir${NC}"
-    return 0
-}
-
-# ===============================================================================
-# Logging Functions
-# ===============================================================================
-
-/**
- * @function       log
- * @description    Log a message to both console and log file
- * @param {string} message - Message to log
- * @param {string} log_file - Path to log file
- * @param {boolean} silent - Whether to suppress console output
- */
-log() {
-    local message=$1
-    local log_file=$2
-    local silent=${3:-false}
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
-    # Always write to log file if specified
-    if [ -n "$log_file" ]; then
-        echo "$timestamp - $message" >> "$log_file"
-    fi
-    
-    # Write to console unless in silent mode
-    if [ "$silent" != true ]; then
-        echo "$timestamp - $message"
-    fi
-}
-
-/**
- * @function       section
- * @description    Log a section header to both console and log file
- * @param {string} title - Section title
- * @param {string} log_file - Path to log file
- */
-section() {
-    local title=$1
-    local log_file=$2
-    
-    echo -e "\n${YELLOW}===== $title =====${NC}"
-    
-    if [ -n "$log_file" ]; then
-        echo -e "===== $title =====" >> "$log_file"
-    fi
-}
-
-/**
- * @function       handle_error
- * @description    Handle an error with consistent formatting
- * @param {number} exit_code - Exit code to return
- * @param {string} error_message - Error message to display
- * @param {string} log_file - Path to log file
- * @param {boolean} silent - Whether to suppress console output
- */
+# Error handling function
 handle_error() {
     local exit_code=$1
     local error_message=$2
-    local log_file=$3
-    local silent=${4:-false}
+    local log_file=${3:-}
+    local silent_mode=${4:-false}
     
-    log "ERROR: $error_message" "$log_file" "$silent"
+    if [[ -n "$log_file" && -d "$(dirname "$log_file")" ]]; then
+        echo "ERROR: $error_message (Exit code: $exit_code)" | tee -a "$log_file"
+    else
+        echo -e "${RED}ERROR: $error_message (Exit code: $exit_code)${NC}"
+    fi
     
-    if [ "$silent" != true ]; then
-        echo -e "${RED}ERROR: $error_message${NC}"
+    if [[ "$silent_mode" == true ]]; then
+        echo "BACKUP FAILED: $error_message"
     fi
     
     exit $exit_code
 }
 
-# ===============================================================================
-# Utility Functions
-# ===============================================================================
+# Logging function
+log() {
+    local message=$1
+    local log_file=${2:-}
+    local silent_mode=${3:-false}
+    local timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
+    
+    if [[ -n "$log_file" && -d "$(dirname "$log_file")" ]]; then
+        echo "$timestamp - $message" >> "$log_file"
+    fi
+    
+    if [[ "$silent_mode" == false ]]; then
+        echo -e "$timestamp - $message"
+    fi
+}
 
-/**
- * @function       confirm
- * @description    Ask for user confirmation with yes/no prompt
- * @param {string} message - Prompt message
- * @param {string} default - Default response if user just presses Enter (y/n)
- * @returns        0 for yes, 1 for no
- */
-confirm() {
+# Section headers function
+section() {
+    local title=$1
+    echo -e "\n${YELLOW}===== $title =====${NC}"
+    
+    if [[ -n "$2" && -d "$(dirname "$2")" ]]; then
+        echo "===== $title =====" >> "$2"
+    fi
+}
+
+# SECURITY IMPROVEMENT: Replace unsafe eval-based command execution with array-based approach
+run_cmd() {
+    local cmd=("$@")
+    
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "${YELLOW}DRY RUN: Would execute: ${cmd[*]}${NC}"
+        return 0
+    else
+        "${cmd[@]}" # Execute command using array to prevent injection
+        return $?
+    fi
+}
+
+# Safe version of the confirm function
+safe_confirm() {
+    if [ "$SKIP_CONFIRMATION" = true ]; then
+        return 0
+    fi
+    
     local message="${1:-Are you sure you want to proceed?}"
     local default="${2:-n}"
     
@@ -261,48 +135,401 @@ confirm() {
     fi
 }
 
-/**
- * @function       check_required_tools
- * @description    Check if required tools are installed
- * @param          List of tool names to check
- * @returns        0 if all tools are available, 1 otherwise
- */
+# SECURITY IMPROVEMENT: Safe path handling function
+validate_path() {
+    local path="$1"
+    local type="$2"  # "dir" or "file"
+    
+    # Remove any potential command injection characters
+    path=$(echo "$path" | tr -d ';&|$()`')
+    
+    if [ "$type" = "dir" ]; then
+        # Ensure it's an absolute path or relative to home
+        if [[ ! "$path" =~ ^/ && ! "$path" =~ ^~ ]]; then
+            echo "Error: Directory path must be absolute or relative to home"
+            return 1
+        fi
+        
+        # Further validations could be added here
+    fi
+    
+    echo "$path"
+}
+
+# SECURITY IMPROVEMENT: Function to sanitize input
+sanitize_input() {
+    local input="$1"
+    # Remove potentially dangerous characters
+    echo "$input" | tr -d ';&|$()`'
+}
+
+# Verify directory exists and is accessible
+verify_directory() {
+    local dir_path=$1
+    local dir_type=$2
+    local create=${3:-false}
+    
+    if [ ! -d "$dir_path" ]; then
+        if [ "$create" = true ]; then
+            mkdir -p "$dir_path" || return 1
+            echo -e "${GREEN}✓ Created $dir_type directory: $dir_path${NC}"
+        else
+            echo -e "${RED}ERROR: $dir_type directory does not exist: $dir_path${NC}"
+            return 1
+        fi
+    fi
+    
+    if [ ! -w "$dir_path" ]; then
+        echo -e "${RED}ERROR: $dir_type directory is not writable: $dir_path${NC}"
+        return 1
+    fi
+    
+    # Test we can actually write to the filesystem
+    local test_file="$dir_path/.write_test_$(date +%s)"
+    if ! touch "$test_file" 2>/dev/null; then
+        echo -e "${RED}ERROR: Cannot write to $dir_type directory: $dir_path${NC}"
+        echo -e "${RED}The filesystem may be read-only or full.${NC}"
+        return 1
+    else
+        rm -f "$test_file"
+        echo -e "${GREEN}✓ $dir_type directory is accessible and writable: $dir_path${NC}"
+    fi
+    
+    return 0
+}
+
+# Calculate checksum for a file
+calculate_checksum() {
+    local file_path=$1
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file_path" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file_path" | awk '{print $1}'
+    else
+        md5sum "$file_path" | awk '{print $1}'
+    fi
+}
+
+# Verify backup integrity with enhanced checks
+verify_backup() {
+    local backup_file=$1
+    local log_file=${2:-}
+    local silent_mode=${3:-false}
+    local thorough=${4:-false}
+    
+    # Basic test: integrity of compressed file
+    if ! tar -tzf "$backup_file" > /dev/null 2>&1; then
+        log "✗ Backup integrity check failed: $(basename "$backup_file")" "$log_file" "$silent_mode"
+        return 1
+    fi
+    
+    # Check file is not empty
+    local file_size=$(du -b "$backup_file" | cut -f1)
+    if [ "$file_size" -eq 0 ]; then
+        log "✗ Backup file is empty: $(basename "$backup_file")" "$log_file" "$silent_mode"
+        return 1
+    fi
+    
+    # Calculate and store checksum
+    local checksum=$(calculate_checksum "$backup_file")
+    local checksum_file="${backup_file}.sha256"
+    echo "$checksum  $(basename "$backup_file")" > "$checksum_file"
+    log "Checksum saved to: $checksum_file" "$log_file" "$silent_mode"
+    
+    # If thorough check requested, actually extract to temp and verify extraction
+    if [ "$thorough" = true ]; then
+        log "Performing thorough integrity verification..." "$log_file" "$silent_mode"
+        
+        # Create temporary directory for extraction test
+        local temp_dir=$(mktemp -d)
+        log "Using temporary directory for extraction test: $temp_dir" "$log_file" "$silent_mode"
+        
+        # Attempt to extract a small portion (just list files then extract one small file)
+        local file_count=$(tar -tzf "$backup_file" | wc -l)
+        log "Archive contains $file_count files/directories" "$log_file" "$silent_mode"
+        
+        # Try to extract a small text file for verification
+        # Find the first small file (likely a .md, .txt, .json, etc.)
+        local small_file=$(tar -tzf "$backup_file" | grep -E '\.(md|txt|json|js|css|html)$' | head -1)
+        
+        if [ -n "$small_file" ]; then
+            if tar -xzf "$backup_file" -C "$temp_dir" "$small_file" 2>/dev/null; then
+                log "✓ Successfully extracted test file: $small_file" "$log_file" "$silent_mode"
+                if [ -f "$temp_dir/$small_file" ]; then
+                    log "✓ Extracted file exists and is readable" "$log_file" "$silent_mode"
+                else
+                    log "✗ Extracted file does not exist or is not readable" "$log_file" "$silent_mode"
+                    rm -rf "$temp_dir"
+                    return 1
+                fi
+            else
+                log "✗ Failed to extract test file" "$log_file" "$silent_mode"
+                rm -rf "$temp_dir"
+                return 1
+            fi
+        else
+            log "No suitable small file found for extraction test, skipping this step" "$log_file" "$silent_mode"
+        fi
+        
+        # Clean up
+        rm -rf "$temp_dir"
+    fi
+    
+    # All checks passed
+    log "✓ Backup integrity verified for: $(basename "$backup_file")" "$log_file" "$silent_mode"
+    return 0
+}
+
+# Send email notification
+send_email_notification() {
+    local subject=$1
+    local message=$2
+    local recipient=${3:-}
+    local attachment=${4:-}
+    
+    # Skip if no recipient
+    if [[ -z "$recipient" ]]; then
+        return 0
+    fi
+    
+    # Check if mail command exists
+    if ! command -v mail >/dev/null 2>&1; then
+        echo "Cannot send email - mail command not found"
+        return 1
+    fi
+    
+    # If credentials are available, use them
+    if [[ -n "$EMAIL_USERNAME" && -n "$EMAIL_PASSWORD" && -n "$EMAIL_SMTP_SERVER" ]]; then
+        # Create temporary mailrc file
+        local mailrc_file=$(mktemp)
+        echo "set smtp=$EMAIL_SMTP_SERVER" > "$mailrc_file"
+        echo "set smtp-use-starttls" >> "$mailrc_file"
+        echo "set smtp-auth=login" >> "$mailrc_file"
+        echo "set smtp-auth-user=$EMAIL_USERNAME" >> "$mailrc_file"
+        echo "set smtp-auth-password=$EMAIL_PASSWORD" >> "$mailrc_file"
+        echo "set from=${EMAIL_FROM:-$EMAIL_USERNAME}" >> "$mailrc_file"
+        
+        # Send with or without attachment
+        if [[ -n "$attachment" && -f "$attachment" ]]; then
+            MAILRC="$mailrc_file" EMAIL="$EMAIL_USERNAME" echo "$message" | mail -s "$subject" -a "$attachment" "$recipient"
+        else
+            MAILRC="$mailrc_file" EMAIL="$EMAIL_USERNAME" echo "$message" | mail -s "$subject" "$recipient"
+        fi
+        
+        # Clean up
+        rm -f "$mailrc_file"
+    else
+        # Basic sending without authentication
+        if [[ -n "$attachment" && -f "$attachment" ]]; then
+            echo "$message" | mail -s "$subject" -a "$attachment" "$recipient"
+        else
+            echo "$message" | mail -s "$subject" "$recipient"
+        fi
+    fi
+    
+    return $?
+}
+
+# Generate a progress bar
+progress_bar() {
+    local current=$1
+    local total=$2
+    local width=${3:-50}
+    local label=${4:-}
+    
+    # Calculate percentage
+    local percent=$((current * 100 / total))
+    local filled=$((current * width / total))
+    
+    # Construct the bar
+    printf "\r["
+    printf "%${filled}s" | tr ' ' '#'
+    printf "%$(($width - $filled))s" | tr ' ' ' '
+    printf "] %3d%%" "$percent"
+    
+    if [[ -n "$label" ]]; then
+        printf " - %s" "$label"
+    fi
+    
+    # Print newline if completed
+    if [ "$current" -eq "$total" ]; then
+        printf "\n"
+    fi
+}
+
+# Animated progress indicator for operations with indeterminate progress
+animated_progress() {
+    local pid=$1      # Process ID to monitor
+    local message=$2  # Status message to display
+    local interval=${3:-0.2}  # Refresh interval
+    local symbols=("-" "\\" "|" "/")  # Animation frames
+    local i=0
+    
+    # Save cursor position
+    tput sc
+    
+    while kill -0 $pid 2>/dev/null; do
+        symbol=${symbols[$i]}
+        i=$(( (i + 1) % 4 ))
+        
+        # If silent mode is enabled, don't show animation
+        if [ "$SILENT_MODE" != "true" ]; then
+            # Move to saved position and print progress
+            tput rc
+            printf "\r[%s] %s " "$symbol" "$message"
+        fi
+        
+        sleep $interval
+    done
+    
+    # Clear line
+    tput rc
+    printf "\r%-80s\r" " "
+}
+
+# Estimate progress based on file size change
+monitor_file_progress() {
+    local file_path=$1      # File path to monitor
+    local expected_size=$2  # Expected final size (approx)
+    local message=$3        # Status message to display
+    local pid=$4            # Process ID to monitor (optional)
+    local interval=${5:-1}  # Refresh interval in seconds
+    
+    # Initialize progress variables
+    local current_size=0
+    local last_size=0
+    local start_time=$(date +%s)
+    local elapsed=0
+    local speed=0
+    local eta=0
+    
+    while true; do
+        # Check if file exists yet
+        if [ -f "$file_path" ]; then
+            current_size=$(du -b "$file_path" 2>/dev/null | cut -f1)
+            
+            # If expected size is not provided, use some heuristics
+            if [ -z "$expected_size" ] || [ "$expected_size" -eq 0 ]; then
+                # Just show size
+                printf "\r[%s] %s - %s " "↑" "$message" "$(format_size $current_size)"
+            else
+                # Calculate progress
+                local percent=$((current_size * 100 / expected_size))
+                if [ "$percent" -gt 100 ]; then
+                    percent=100
+                fi
+                
+                # Calculate speed
+                if [ "$elapsed" -gt 0 ]; then
+                    speed=$((current_size / elapsed))
+                fi
+                
+                # Calculate ETA
+                if [ "$speed" -gt 0 ]; then
+                    eta=$(((expected_size - current_size) / speed))
+                fi
+                
+                # Format for display
+                local speed_formatted=$(format_size $speed)
+                local eta_formatted=$(format_time $eta)
+                
+                # Show progress
+                printf "\r[%3d%%] %s - %s at %s/s, ETA: %s " \
+                       "$percent" "$message" "$(format_size $current_size)" "$speed_formatted" "$eta_formatted"
+            fi
+            
+            # Store last size for speed calculation
+            last_size=$current_size
+        else
+            printf "\r[...] %s - Waiting for file..." "$message"
+        fi
+        
+        # Check if monitored process still exists
+        if [ -n "$pid" ] && ! kill -0 $pid 2>/dev/null; then
+            printf "\r%-80s\r" " "
+            printf "\r[100%%] %s - Completed (%s) " "$message" "$(format_size $current_size)"
+            break
+        fi
+        
+        # Update elapsed time
+        elapsed=$(($(date +%s) - start_time))
+        
+        # If file size hasn't changed in 5 seconds and process is not running, assume we're done
+        if [ "$current_size" -eq "$last_size" ] && [ "$elapsed" -gt 5 ] && [ -n "$pid" ] && ! kill -0 $pid 2>/dev/null; then
+            printf "\r%-80s\r" " "
+            printf "\r[100%%] %s - Completed (%s) " "$message" "$(format_size $current_size)"
+            break
+        fi
+        
+        sleep $interval
+    done
+    
+    printf "\n"
+}
+
+# Format time in seconds to readable format
+format_time() {
+    local seconds=$1
+    
+    if [ "$seconds" -lt 60 ]; then
+        echo "${seconds}s"
+    elif [ "$seconds" -lt 3600 ]; then
+        local m=$((seconds / 60))
+        local s=$((seconds % 60))
+        printf "%dm %ds" $m $s
+    else
+        local h=$((seconds / 3600))
+        local m=$(((seconds % 3600) / 60))
+        printf "%dh %dm" $h $m
+    fi
+}
+
+# Get file modification time as Unix timestamp
+get_file_mtime() {
+    local file_path=$1
+    stat -c %Y "$file_path" 2>/dev/null || \
+    stat -f %m "$file_path" 2>/dev/null
+}
+
+# Compare two files to see if they're different
+files_differ() {
+    local file1=$1
+    local file2=$2
+    
+    # If either file doesn't exist, they differ
+    if [[ ! -f "$file1" || ! -f "$file2" ]]; then
+        return 0  # true, they differ
+    fi
+    
+    # Check size first (quick comparison)
+    local size1=$(stat -c %s "$file1" 2>/dev/null || stat -f %z "$file1" 2>/dev/null)
+    local size2=$(stat -c %s "$file2" 2>/dev/null || stat -f %z "$file2" 2>/dev/null)
+    
+    if [[ "$size1" != "$size2" ]]; then
+        return 0  # true, they differ
+    fi
+    
+    # Compare content
+    cmp -s "$file1" "$file2"
+    return $?  # 0 if same, 1 if different
+}
+
+# SECURITY IMPROVEMENT: Secure way to check required tools
 check_required_tools() {
-    local missing=()
+    local missing_tools=()
     
     for tool in "$@"; do
-        if ! command -v $tool >/dev/null 2>&1; then
-            missing+=("$tool")
+        if ! command -v "$tool" > /dev/null 2>&1; then
+            missing_tools+=("$tool")
         fi
     done
     
-    if [ ${#missing[@]} -gt 0 ]; then
-        echo -e "${RED}ERROR: Required tools not installed: ${missing[*]}${NC}"
+    if [ ${#missing_tools[@]} -gt 0 ]; then
+        echo "Error: Required tools not installed: ${missing_tools[*]}"
         return 1
     fi
     
     return 0
 }
 
-/**
- * @function       run_cmd
- * @description    Run a command with dry-run support
- * @param {string} cmd - Command to run
- * @param {boolean} dry_run - Whether to simulate execution
- * @returns        Command exit code
- */
-run_cmd() {
-    local cmd=$1
-    local dry_run=${2:-false}
-    
-    if [ "$dry_run" = true ]; then
-        echo -e "${YELLOW}DRY RUN: Would execute: $cmd${NC}"
-        return 0
-    else
-        eval "$cmd"
-        return $?
-    fi
-}
-
-# Export colors
-export RED GREEN YELLOW BLUE MAGENTA CYAN NC
+# End of utility functions

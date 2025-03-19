@@ -4,12 +4,10 @@
 
 # Source the shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Use absolute paths to be certain
-source "/home/cschw/backup-webdev/src/core/config.sh"
-source "/home/cschw/backup-webdev/src/utils/utils.sh"
-source "/home/cschw/backup-webdev/src/ui/ui.sh"
-source "/home/cschw/backup-webdev/src/reports/reporting.sh"
+source "$SCRIPT_DIR/../core/config.sh"
+source "$SCRIPT_DIR/../utils/utils.sh"
+source "$SCRIPT_DIR/../ui/ui.sh"
+source "$SCRIPT_DIR/../reports/reporting.sh"
 
 # Get passed arguments to forward to other scripts if needed
 ARGS="$@"

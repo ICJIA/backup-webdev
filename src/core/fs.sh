@@ -1,478 +1,681 @@
 #!/bin/bash
-# ===============================================================================
-# fs.sh - Filesystem operations for WebDev Backup Tool
-# ===============================================================================
-#
-# @file            fs.sh
-# @description     Provides backup and restore file system operations
-# @author          Claude
-# @version         1.6.0
-#
-# This file contains functions for creating and verifying backups, including
-# compression, incremental backups, and verification of backup integrity.
-# ===============================================================================
+# fs.sh - Filesystem operations for backup-webdev
+# This file contains filesystem-related functions used across scripts
 
-# Set the project root directory
-SCRIPT_DIR_FS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Source the shared utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../utils/utils.sh"
 
-# Import core configuration
-if [[ "$SCRIPT_DIR_FS" == */src/core ]]; then
-    source "$SCRIPT_DIR_FS/config.sh"
-    source "$SCRIPT_DIR_FS/../utils/utils.sh"
-else
-    source "$SCRIPT_DIR_FS/config.sh"
-    source "$SCRIPT_DIR_FS/utils.sh"
-fi
-
-# ===============================================================================
-# Backup Creation Functions
-# ===============================================================================
-
-/**
- * @function       create_backup_archive
- * @description    Create a compressed backup archive of a project
- * @param {string} base_dir - Base directory containing the project
- * @param {string} project_name - Name of the project to backup
- * @param {string} output_file - Path to the output archive file
- * @param {string} log_file - Path to the log file
- * @param {number} compression_level - Compression level (1-9)
- * @param {string} exclude_pattern - Pattern to exclude (e.g., "*/node_modules/*")
- * @param {number} threads - Number of parallel compression threads
- * @param {boolean} silent - Whether to suppress console output
- * @returns        0 on success, 1 on failure
- */
+# Create backup archive with compression
 create_backup_archive() {
-    local base_dir=$1
-    local project_name=$2
-    local output_file=$3
-    local log_file=$4
-    local compression_level=${5:-6}
-    local exclude_pattern=${6:-}
-    local threads=${7:-1}
-    local silent=${8:-false}
+    local source_dir=$1
+    local project=$2
+    local backup_file=$3
+    local log_file=${4:-}
+    local compression=${5:-6}
+    local exclude_pattern=${6:-"*/node_modules/*"}
     
-    # Verify parameters
-    if [ -z "$base_dir" ] || [ -z "$project_name" ] || [ -z "$output_file" ]; then
-        log "ERROR: Missing required parameters for create_backup_archive" "$log_file" "$silent"
-        return 1
-    fi
+    # Determine if we want to use parallel compression
+    local parallel_threads=${7:-1}
+    local silent_mode=${8:-false}
     
-    # Make sure base directory exists
-    if [ ! -d "$base_dir" ]; then
-        log "ERROR: Base directory does not exist: $base_dir" "$log_file" "$silent"
-        return 1
-    fi
+    # Estimate the source size (for progress reporting)
+    local source_size=$(get_directory_size "$source_dir/$project" "node_modules")
+    log "Estimated source size: $(format_size $source_size)" "$log_file" "$silent_mode"
     
-    # Make sure project exists
-    local project_path="$base_dir/$project_name"
-    if [ ! -d "$project_path" ]; then
-        log "ERROR: Project directory does not exist: $project_path" "$log_file" "$silent"
-        return 1
-    fi
+    # Create a temporary log for capturing tar output
+    local tar_log=$(mktemp)
     
-    # Create output directory if it doesn't exist
-    local output_dir=$(dirname "$output_file")
-    if [ ! -d "$output_dir" ]; then
-        if ! mkdir -p "$output_dir" 2>/dev/null; then
-            log "ERROR: Failed to create output directory: $output_dir" "$log_file" "$silent"
-            return 1
-        fi
-    fi
-    
-    # Log the backup operation
-    log "Creating backup of $project_name to $output_file" "$log_file" "$silent"
-    log "Compression level: $compression_level" "$log_file" "$silent"
-    
-    if [ -n "$exclude_pattern" ]; then
-        log "Excluding pattern: $exclude_pattern" "$log_file" "$silent"
-    fi
-    
-    # Use pigz for parallel compression if available and requested
-    if [ "$threads" -gt 1 ] && command -v pigz >/dev/null 2>&1; then
-        log "Using parallel compression with $threads threads" "$log_file" "$silent"
+    if [ "$parallel_threads" -gt 1 ] && command -v pigz >/dev/null 2>&1; then
+        # Use pigz for parallel compression
+        log "Using parallel compression with $parallel_threads threads (pigz)" "$log_file" "$silent_mode"
         
-        # Backup command with pigz compression
-        if [ -n "$exclude_pattern" ]; then
-            # With exclusion
-            tar --use-compress-program="pigz -$compression_level -p $threads" \
+        # Run tar with pigz in background so we can monitor
+        if [ "$silent_mode" = false ]; then
+            # Show progress for interactive mode
+            (tar --use-compress-program="pigz -$compression" -cf "$backup_file" \
                 --exclude="$exclude_pattern" \
-                -cf "$output_file" \
-                -C "$base_dir" "$project_name" 2>> "$log_file"
+                -C "$source_dir" "$project" 2> "$tar_log") &
+            
+            # Get PID of background tar process
+            local tar_pid=$!
+            
+            # Show real-time progress by monitoring the output file size
+            monitor_file_progress "$backup_file" "$((source_size / 5))" "Compressing $project" "$tar_pid"
+            
+            # Wait for tar to finish
+            wait $tar_pid
+            local tar_status=$?
+            
+            # Append tar log to main log
+            if [ -f "$tar_log" ]; then
+                cat "$tar_log" >> "$log_file"
+                rm -f "$tar_log"
+            fi
+            
+            return $tar_status
         else
-            # No exclusion
-            tar --use-compress-program="pigz -$compression_level -p $threads" \
-                -cf "$output_file" \
-                -C "$base_dir" "$project_name" 2>> "$log_file"
+            # Silent mode - just run normally
+            if tar --use-compress-program="pigz -$compression" -cf "$backup_file" \
+                --exclude="$exclude_pattern" \
+                -C "$source_dir" "$project" 2>> "$log_file"; then
+                rm -f "$tar_log"
+                return 0
+            else
+                local tar_status=$?
+                if [ -f "$tar_log" ]; then
+                    cat "$tar_log" >> "$log_file"
+                    rm -f "$tar_log"
+                fi
+                return $tar_status
+            fi
         fi
     else
-        # Standard gzip compression
-        if [ -n "$exclude_pattern" ]; then
-            # With exclusion
-            tar -C "$base_dir" \
+        # Use standard compression with gzip
+        log "Using standard compression with gzip" "$log_file" "$silent_mode"
+        
+        # Run tar in background so we can monitor
+        if [ "$silent_mode" = false ]; then
+            # Show progress for interactive mode
+            (tar -czf "$backup_file" \
                 --exclude="$exclude_pattern" \
-                -c "$project_name" | gzip -"$compression_level" > "$output_file" 2>> "$log_file"
+                -C "$source_dir" "$project" 2> "$tar_log") &
+            
+            # Get PID of background tar process
+            local tar_pid=$!
+            
+            # Show real-time progress by monitoring the output file size
+            monitor_file_progress "$backup_file" "$((source_size / 5))" "Compressing $project" "$tar_pid"
+            
+            # Wait for tar to finish
+            wait $tar_pid
+            local tar_status=$?
+            
+            # Append tar log to main log
+            if [ -f "$tar_log" ]; then
+                cat "$tar_log" >> "$log_file"
+                rm -f "$tar_log"
+            fi
+            
+            return $tar_status
         else
-            # No exclusion
-            tar -C "$base_dir" -c "$project_name" | gzip -"$compression_level" > "$output_file" 2>> "$log_file"
+            # Silent mode - just run normally
+            if tar -czf "$backup_file" \
+                --exclude="$exclude_pattern" \
+                -C "$source_dir" "$project" 2>> "$log_file"; then
+                rm -f "$tar_log"
+                return 0
+            else
+                local tar_status=$?
+                if [ -f "$tar_log" ]; then
+                    cat "$tar_log" >> "$log_file"
+                    rm -f "$tar_log"
+                fi
+                return $tar_status
+            fi
         fi
-    fi
-    
-    # Check if backup was successful
-    if [ $? -eq 0 ] && [ -f "$output_file" ]; then
-        log "Backup created successfully: $output_file" "$log_file" "$silent"
-        return 0
-    else
-        log "ERROR: Failed to create backup: $output_file" "$log_file" "$silent"
-        return 1
     fi
 }
 
-/**
- * @function       create_incremental_backup
- * @description    Create an incremental backup based on a snapshot file
- * @param {string} base_dir - Base directory containing the project
- * @param {string} project_name - Name of the project to backup
- * @param {string} output_file - Path to the output archive file
- * @param {string} snapshot_file - Path to the snapshot file
- * @param {string} log_file - Path to the log file
- * @param {number} compression_level - Compression level (1-9)
- * @returns        0 on success, 1 on failure
- */
+# Create incremental backup archive
 create_incremental_backup() {
-    local base_dir=$1
-    local project_name=$2
-    local output_file=$3
-    local snapshot_file=$4
-    local log_file=$5
-    local compression_level=${6:-6}
+    local source_dir=$1
+    local project=$2
+    local backup_file=$3
+    local snapshot_file=${4:-}
+    local log_file=${5:-}
+    local compression=${6:-6}
+    local exclude_pattern=${7:-"*/node_modules/*"}
     
-    # Verify parameters
-    if [ -z "$base_dir" ] || [ -z "$project_name" ] || [ -z "$output_file" ] || [ -z "$snapshot_file" ]; then
-        log "ERROR: Missing required parameters for create_incremental_backup" "$log_file"
-        return 1
+    # If no snapshot file, create one
+    if [ -z "$snapshot_file" ]; then
+        snapshot_file="${backup_file}.snapshot"
     fi
     
-    # Create snapshot directory if it doesn't exist
-    local snapshot_dir=$(dirname "$snapshot_file")
-    if [ ! -d "$snapshot_dir" ]; then
-        if ! mkdir -p "$snapshot_dir" 2>/dev/null; then
-            log "ERROR: Failed to create snapshot directory: $snapshot_dir" "$log_file"
+    # Check if snapshot exists for incremental backup
+    if [ -f "$snapshot_file" ]; then
+        # Incremental backup using existing snapshot
+        if tar --listed-incremental="$snapshot_file" -czf "$backup_file" \
+            --exclude="$exclude_pattern" \
+            -C "$source_dir" "$project" 2>> "$log_file"; then
+            return 0
+        else
+            return 1
+        fi
+    else
+        # First level backup - create snapshot
+        if tar --listed-incremental="$snapshot_file" -czf "$backup_file" \
+            --exclude="$exclude_pattern" \
+            -C "$source_dir" "$project" 2>> "$log_file"; then
+            return 0
+        else
             return 1
         fi
     fi
-    
-    # Log the backup operation
-    log "Creating incremental backup of $project_name to $output_file" "$log_file"
-    log "Using snapshot file: $snapshot_file" "$log_file"
-    
-    # Create incremental backup
-    tar --listed-incremental="$snapshot_file" \
-        --exclude="*/node_modules/*" \
-        -czf "$output_file" \
-        -C "$base_dir" "$project_name" 2>> "$log_file"
-    
-    # Check if backup was successful
-    if [ $? -eq 0 ] && [ -f "$output_file" ]; then
-        log "Incremental backup created successfully: $output_file" "$log_file"
-        return 0
-    else
-        log "ERROR: Failed to create incremental backup: $output_file" "$log_file"
-        return 1
-    fi
 }
 
-/**
- * @function       create_differential_backup
- * @description    Create a differential backup based on a base snapshot file
- * @param {string} base_dir - Base directory containing the project
- * @param {string} project_name - Name of the project to backup
- * @param {string} output_file - Path to the output archive file
- * @param {string} base_snapshot - Path to the base snapshot file
- * @param {string} log_file - Path to the log file
- * @param {number} compression_level - Compression level (1-9)
- * @returns        0 on success, 1 on failure
- */
+# Create differential backup archive
 create_differential_backup() {
-    local base_dir=$1
-    local project_name=$2
-    local output_file=$3
-    local base_snapshot=$4
-    local log_file=$5
-    local compression_level=${6:-6}
+    local source_dir=$1
+    local project=$2
+    local backup_file=$3
+    local base_snapshot=${4:-}
+    local log_file=${5:-}
+    local compression=${6:-6}
+    local exclude_pattern=${7:-"*/node_modules/*"}
     
-    # Verify parameters
-    if [ -z "$base_dir" ] || [ -z "$project_name" ] || [ -z "$output_file" ]; then
-        log "ERROR: Missing required parameters for create_differential_backup" "$log_file"
-        return 1
-    fi
-    
-    # Create snapshot directory if needed
-    local snapshot_dir=$(dirname "$base_snapshot")
-    if [ ! -d "$snapshot_dir" ]; then
-        if ! mkdir -p "$snapshot_dir" 2>/dev/null; then
-            log "ERROR: Failed to create snapshot directory: $snapshot_dir" "$log_file"
+    # Check for base snapshot - if not exists, create full backup
+    if [ -z "$base_snapshot" ] || [ ! -f "$base_snapshot" ]; then
+        log "No base snapshot found, creating full backup as reference" "$log_file"
+        # Create base snapshot with new backup
+        base_snapshot="${backup_file}.base-snapshot"
+        
+        if tar --listed-incremental="$base_snapshot" -czf "$backup_file" \
+            --exclude="$exclude_pattern" \
+            -C "$source_dir" "$project" 2>> "$log_file"; then
+            return 0
+        else
             return 1
         fi
-    fi
-    
-    # Create a temporary copy of the base snapshot if it exists
-    local temp_snapshot=$(mktemp)
-    if [ -f "$base_snapshot" ]; then
+    else
+        # Create a temporary snapshot for this differential backup
+        local temp_snapshot=$(mktemp)
+        
+        # Copy the base snapshot to use as reference
         cp "$base_snapshot" "$temp_snapshot"
-    else
-        # Create a new base snapshot if it doesn't exist
-        log "Base snapshot doesn't exist. Creating new base snapshot: $base_snapshot" "$log_file"
-        touch "$temp_snapshot"
-    fi
-    
-    # Log the backup operation
-    log "Creating differential backup of $project_name to $output_file" "$log_file"
-    log "Using base snapshot: $base_snapshot" "$log_file"
-    
-    # Create differential backup
-    tar --listed-incremental="$temp_snapshot" \
-        --exclude="*/node_modules/*" \
-        -czf "$output_file" \
-        -C "$base_dir" "$project_name" 2>> "$log_file"
-    
-    # Check if backup was successful
-    local result=$?
-    
-    # Clean up temporary snapshot file
-    rm -f "$temp_snapshot"
-    
-    if [ $result -eq 0 ] && [ -f "$output_file" ]; then
-        # Don't update the base snapshot - that's what makes it differential
-        log "Differential backup created successfully: $output_file" "$log_file"
-        return 0
-    else
-        log "ERROR: Failed to create differential backup: $output_file" "$log_file"
-        return 1
-    fi
-}
-
-# ===============================================================================
-# Verification Functions
-# ===============================================================================
-
-/**
- * @function       verify_backup
- * @description    Verify integrity of a backup archive
- * @param {string} backup_file - Path to the backup file
- * @param {string} log_file - Path to the log file
- * @param {boolean} silent - Whether to suppress console output
- * @param {boolean} thorough - Perform thorough verification (extract test)
- * @returns        0 if backup is valid, 1 otherwise
- */
-verify_backup() {
-    local backup_file=$1
-    local log_file=$2
-    local silent=${3:-false}
-    local thorough=${4:-false}
-    
-    # Verify parameters
-    if [ -z "$backup_file" ]; then
-        log "ERROR: Missing required parameters for verify_backup" "$log_file" "$silent"
-        return 1
-    fi
-    
-    # Check if file exists
-    if [ ! -f "$backup_file" ]; then
-        log "ERROR: Backup file does not exist: $backup_file" "$log_file" "$silent"
-        return 1
-    fi
-    
-    # Basic integrity check
-    log "Verifying backup integrity: $backup_file" "$log_file" "$silent"
-    
-    if ! gzip -t "$backup_file" 2>> "$log_file"; then
-        log "ERROR: Backup file is corrupt (gzip check failed): $backup_file" "$log_file" "$silent"
-        return 1
-    fi
-    
-    # Test archive integrity
-    if ! tar -tzf "$backup_file" >/dev/null 2>> "$log_file"; then
-        log "ERROR: Backup file is corrupt (tar check failed): $backup_file" "$log_file" "$silent"
-        return 1
-    fi
-    
-    # Thorough verification (extract test)
-    if [ "$thorough" = true ]; then
-        log "Performing thorough verification (extraction test)" "$log_file" "$silent"
         
-        # Create a temporary directory
-        local temp_dir=$(mktemp -d)
-        
-        # Extract a sample (top-level directories only)
-        tar -tzf "$backup_file" | grep -v "/" | head -5 | \
-            xargs -I{} tar -xzf "$backup_file" -C "$temp_dir" {} 2>> "$log_file"
-        
-        # Check if extraction succeeded
-        local extract_result=$?
-        
-        # Clean up
-        rm -rf "$temp_dir"
-        
-        if [ $extract_result -ne 0 ]; then
-            log "ERROR: Thorough verification failed (extraction test)" "$log_file" "$silent"
+        # Create differential backup
+        if tar --listed-incremental="$temp_snapshot" -czf "$backup_file" \
+            --exclude="$exclude_pattern" \
+            -C "$source_dir" "$project" 2>> "$log_file"; then
+            rm -f "$temp_snapshot"
+            return 0
+        else
+            rm -f "$temp_snapshot"
             return 1
         fi
-        
-        log "Thorough verification passed" "$log_file" "$silent"
     fi
-    
-    log "Backup integrity verified: $backup_file" "$log_file" "$silent"
-    return 0
 }
 
-/**
- * @function       extract_backup
- * @description    Extract files from a backup archive
- * @param {string} backup_file - Path to the backup file
- * @param {string} destination - Destination directory
- * @param {string} log_file - Path to the log file
- * @param {string} specific_file - Optional specific file to extract
- * @returns        0 on success, 1 on failure
- */
+# Extract backup archive
 extract_backup() {
     local backup_file=$1
-    local destination=$2
-    local log_file=$3
-    local specific_file=$4
+    local extract_dir=$2
+    local log_file=${3:-}
+    local specific_path=${4:-}
     
-    # Verify parameters
-    if [ -z "$backup_file" ] || [ -z "$destination" ]; then
-        log "ERROR: Missing required parameters for extract_backup" "$log_file"
-        return 1
+    # Create extraction directory if it doesn't exist
+    if [ ! -d "$extract_dir" ]; then
+        mkdir -p "$extract_dir" || return 1
+        log "Created extraction directory: $extract_dir" "$log_file"
     fi
     
-    # Check if file exists
-    if [ ! -f "$backup_file" ]; then
-        log "ERROR: Backup file does not exist: $backup_file" "$log_file"
-        return 1
-    fi
-    
-    # Check if destination exists
-    if [ ! -d "$destination" ]; then
-        log "ERROR: Destination directory does not exist: $destination" "$log_file"
-        return 1
-    fi
-    
-    # Log extraction
-    if [ -n "$specific_file" ]; then
-        log "Extracting specific file: $specific_file from $backup_file to $destination" "$log_file"
-        tar -xzf "$backup_file" -C "$destination" "$specific_file" 2>> "$log_file"
+    # Extract specific path if provided, otherwise extract entire archive
+    if [ -n "$specific_path" ]; then
+        if tar -xzf "$backup_file" -C "$extract_dir" "$specific_path" 2>> "$log_file"; then
+            log "Extracted $specific_path from $(basename "$backup_file")" "$log_file"
+            return 0
+        else
+            log "Failed to extract $specific_path from $(basename "$backup_file")" "$log_file"
+            return 1
+        fi
     else
-        log "Extracting backup: $backup_file to $destination" "$log_file"
-        tar -xzf "$backup_file" -C "$destination" 2>> "$log_file"
-    fi
-    
-    # Check result
-    if [ $? -eq 0 ]; then
-        log "Extraction completed successfully" "$log_file"
-        return 0
-    else
-        log "ERROR: Failed to extract backup" "$log_file"
-        return 1
+        if tar -xzf "$backup_file" -C "$extract_dir" 2>> "$log_file"; then
+            log "Extracted $(basename "$backup_file")" "$log_file"
+            return 0
+        else
+            log "Failed to extract $(basename "$backup_file")" "$log_file"
+            return 1
+        fi
     fi
 }
 
-/**
- * @function       upload_to_cloud
- * @description    Upload a file to cloud storage
- * @param {string} file - Path to the file to upload
- * @param {string} provider - Cloud provider (do, aws, dropbox, gdrive)
- * @param {string} log_file - Path to the log file
- * @param {number} bandwidth_limit - Bandwidth limit in KB/s (0 = unlimited)
- * @param {boolean} silent - Whether to suppress console output
- * @returns        0 on success, 1 on failure
- */
-upload_to_cloud() {
-    local file=$1
-    local provider=$2
-    local log_file=$3
-    local bandwidth_limit=${4:-0}
-    local silent=${5:-false}
+# List backup archive contents
+list_backup_contents() {
+    local backup_file=$1
+    local filter=${2:-}
     
-    # Verify parameters
-    if [ -z "$file" ] || [ -z "$provider" ]; then
-        log "ERROR: Missing required parameters for upload_to_cloud" "$log_file" "$silent"
-        return 1
-    fi
-    
-    # Check if file exists
-    if [ ! -f "$file" ]; then
-        log "ERROR: File does not exist: $file" "$log_file" "$silent"
-        return 1
-    }
-    
-    # Load cloud provider settings
-    if [ -f "$SCRIPT_DIR/secrets.sh" ]; then
-        source "$SCRIPT_DIR/secrets.sh"
-    elif [ -f "$CLOUD_DIR/secrets.sh" ]; then
-        source "$CLOUD_DIR/secrets.sh"
+    if [ -n "$filter" ]; then
+        tar -tzf "$backup_file" | grep "$filter"
     else
-        log "ERROR: Could not find secrets.sh file with cloud credentials" "$log_file" "$silent"
+        tar -tzf "$backup_file"
+    fi
+}
+
+# Get size of a directory (excluding specific patterns)
+get_directory_size() {
+    local dir_path=$1
+    local exclude_pattern=${2:-"node_modules"}
+    
+    if [ -d "$dir_path" ]; then
+        du -sb --exclude="$exclude_pattern" "$dir_path" 2>/dev/null | cut -f1
+    else
+        echo "0"
+    fi
+}
+
+# Find projects in a directory
+find_projects() {
+    local source_dir=$1
+    local max_depth=${2:-1}
+    
+    if [ ! -d "$source_dir" ]; then
         return 1
     fi
     
-    # Get filename for cloud path
-    local filename=$(basename "$file")
+    # Find directories only up to max_depth
+    find "$source_dir" -maxdepth "$max_depth" -mindepth 1 -type d -not -path "*/\.*" | sort
+}
+
+# Find the most recent backup for a project
+find_latest_backup() {
+    local backup_dir=$1
+    local project=${2:-}
     
-    # Upload based on provider
+    if [ ! -d "$backup_dir" ]; then
+        return 1
+    fi
+    
+    if [ -n "$project" ]; then
+        # Look for specific project backups
+        find "$backup_dir" -type f -name "${project}_*.tar.gz" -printf "%T@ %p\n" | sort -nr | head -1 | cut -d' ' -f2-
+    else
+        # Look for any backup
+        find "$backup_dir" -type d -name "webdev_backup_*" -printf "%T@ %p\n" | sort -nr | head -1 | cut -d' ' -f2-
+    fi
+}
+
+# List all backups
+list_all_backups() {
+    local backup_dir=$1
+    local project=${2:-}
+    
+    if [ ! -d "$backup_dir" ]; then
+        return 1
+    fi
+    
+    if [ -n "$project" ]; then
+        # List specific project backups
+        find "$backup_dir" -type f -name "${project}_*.tar.gz" -printf "%T@ %p\n" | sort -nr | cut -d' ' -f2-
+    else
+        # List all backup directories
+        find "$backup_dir" -type d -name "webdev_backup_*" -printf "%T@ %p\n" | sort -nr | cut -d' ' -f2-
+    fi
+}
+
+# Upload backup to cloud storage
+upload_to_cloud() {
+    local backup_file=$1
+    local provider=$2
+    local log_file=${3:-}
+    local bandwidth_limit=${4:-0}
+    local silent_mode=${5:-false}
+    
+    local limit_cmd=""
+    if [ "$bandwidth_limit" -gt 0 ]; then
+        limit_cmd="--bwlimit=$bandwidth_limit"
+    fi
+    
+    # Get file size for progress reporting
+    local file_size=$(du -b "$backup_file" 2>/dev/null | cut -f1)
+    log "Starting upload of $(basename "$backup_file") ($(format_size $file_size))" "$log_file" "$silent_mode"
+    
     case "$provider" in
-        do|spaces|digitalocean)
-            # DigitalOcean Spaces using AWS CLI compatible commands
-            if ! command -v aws >/dev/null 2>&1; then
-                log "ERROR: aws CLI not installed. Cannot upload to DigitalOcean Spaces." "$log_file" "$silent"
-                return 1
-            fi
-            
-            log "Uploading to DigitalOcean Spaces: $filename" "$log_file" "$silent"
-            
-            # Configure bandwidth limit if needed
-            local bwlimit=""
-            if [ "$bandwidth_limit" -gt 0 ]; then
-                bwlimit="--cli-read-timeout 0 --cli-connect-timeout 0"
-            fi
-            
-            if ! aws s3 cp "$file" "s3://${DO_SPACES_BUCKET}/webdev-backup/${filename}" \
-                --endpoint-url "https://${DO_SPACES_ENDPOINT}" \
-                $bwlimit 2>> "$log_file"; then
-                log "ERROR: Failed to upload to DigitalOcean Spaces: $filename" "$log_file" "$silent"
-                return 1
-            fi
-            ;;
-            
         aws|s3)
-            # AWS S3
+            # Check AWS CLI is installed
             if ! command -v aws >/dev/null 2>&1; then
-                log "ERROR: aws CLI not installed. Cannot upload to AWS S3." "$log_file" "$silent"
+                log "AWS CLI not installed. Cannot upload to S3." "$log_file"
                 return 1
             fi
             
-            log "Uploading to AWS S3: $filename" "$log_file" "$silent"
-            
-            # Configure bandwidth limit if needed
-            local bwlimit=""
-            if [ "$bandwidth_limit" -gt 0 ]; then
-                bwlimit="--cli-read-timeout 0 --cli-connect-timeout 0"
+            # Set AWS credentials if available
+            if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ]; then
+                export AWS_ACCESS_KEY_ID
+                export AWS_SECRET_ACCESS_KEY
+                export AWS_DEFAULT_REGION="${S3_REGION:-us-west-2}"
+                log "Using AWS credentials from secrets file" "$log_file"
             fi
             
-            if ! aws s3 cp "$file" "s3://${AWS_S3_BUCKET}/webdev-backup/${filename}" $bwlimit 2>> "$log_file"; then
-                log "ERROR: Failed to upload to AWS S3: $filename" "$log_file" "$silent"
-                return 1
+            # Upload to S3
+            local bucket="${S3_BUCKET:-webdev-backups}"
+            local s3_path="s3://$bucket/$(basename "$backup_file")"
+            
+            log "Uploading to S3: $s3_path" "$log_file" "$silent_mode"
+            
+            if [ "$silent_mode" = false ]; then
+                # Show progress for interactive mode
+                (aws s3 cp $limit_cmd "$backup_file" "$s3_path" 2>/dev/null) &
+                local upload_pid=$!
+                
+                # Monitor upload progress
+                monitor_file_progress "/dev/null" "$file_size" "Uploading to S3" "$upload_pid" 1
+                
+                # Wait for upload to finish
+                wait $upload_pid
+                local upload_status=$?
+                
+                if [ "$upload_status" -eq 0 ]; then
+                    log "Successfully uploaded to S3: $s3_path" "$log_file" "$silent_mode"
+                    return 0
+                else
+                    log "Failed to upload to S3: $s3_path" "$log_file" "$silent_mode"
+                    return 1
+                fi
+            else
+                # Silent mode - run normally
+                if aws s3 cp $limit_cmd "$backup_file" "$s3_path"; then
+                    log "Successfully uploaded to S3: $s3_path" "$log_file" "$silent_mode"
+                    return 0
+                else
+                    log "Failed to upload to S3: $s3_path" "$log_file" "$silent_mode"
+                    return 1
+                fi
             fi
             ;;
             
-        # Additional cloud providers would be implemented here
+        do|spaces|digitalocean)
+            # Check AWS CLI is installed (DO Spaces uses S3-compatible API)
+            if ! command -v aws >/dev/null 2>&1; then
+                log "AWS CLI not installed. Cannot upload to DigitalOcean Spaces." "$log_file"
+                return 1
+            fi
+            
+            # Set DigitalOcean Spaces credentials if available
+            if [ -n "$DO_SPACES_KEY" ] && [ -n "$DO_SPACES_SECRET" ]; then
+                # Store the current AWS creds if they exist
+                local AWS_KEY_BACKUP="$AWS_ACCESS_KEY_ID"
+                local AWS_SECRET_BACKUP="$AWS_SECRET_ACCESS_KEY"
+                local AWS_REGION_BACKUP="$AWS_DEFAULT_REGION"
+                
+                # Set DO credentials
+                export AWS_ACCESS_KEY_ID="$DO_SPACES_KEY"
+                export AWS_SECRET_ACCESS_KEY="$DO_SPACES_SECRET"
+                export AWS_DEFAULT_REGION="${DO_SPACES_REGION:-nyc3}"
+                log "Using DigitalOcean Spaces credentials from secrets file" "$log_file"
+            else
+                log "DigitalOcean Spaces credentials not found in secrets file." "$log_file"
+                return 1
+            fi
+            
+            # Upload to DigitalOcean Spaces
+            local bucket="${DO_SPACES_BUCKET:-webdev-backups}"
+            local endpoint="${DO_SPACES_ENDPOINT:-nyc3.digitaloceanspaces.com}"
+            local spaces_path="s3://$bucket/$(basename "$backup_file")"
+            
+            log "Uploading to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
+            
+            if [ "$silent_mode" = false ]; then
+                # Show progress for interactive mode
+                (aws s3 cp $limit_cmd "$backup_file" "$spaces_path" --endpoint-url "https://$endpoint" 2>/dev/null) &
+                local upload_pid=$!
+                
+                # Monitor upload progress
+                monitor_file_progress "/dev/null" "$file_size" "Uploading to DigitalOcean Spaces" "$upload_pid" 1
+                
+                # Wait for upload to finish
+                wait $upload_pid
+                local upload_status=$?
+                
+                # Restore original AWS credentials if they existed
+                if [ -n "$AWS_KEY_BACKUP" ]; then
+                    export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
+                    export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
+                    export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
+                fi
+                
+                if [ "$upload_status" -eq 0 ]; then
+                    log "Successfully uploaded to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
+                    return 0
+                else
+                    log "Failed to upload to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
+                    return 1
+                fi
+            else
+                # Silent mode - run normally
+                if aws s3 cp $limit_cmd "$backup_file" "$spaces_path" --endpoint-url "https://$endpoint"; then
+                    log "Successfully uploaded to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
+                    
+                    # Restore original AWS credentials if they existed
+                    if [ -n "$AWS_KEY_BACKUP" ]; then
+                        export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
+                        export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
+                        export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
+                    fi
+                    
+                    return 0
+                else
+                    log "Failed to upload to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
+                    
+                    # Restore original AWS credentials if they existed
+                    if [ -n "$AWS_KEY_BACKUP" ]; then
+                        export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
+                        export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
+                        export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
+                    fi
+                    
+                    return 1
+                fi
+            fi
+            ;;
+        
+        dropbox)
+            # Check if Dropbox CLI is installed
+            if ! command -v dropbox-uploader >/dev/null 2>&1; then
+                log "Dropbox Uploader not installed. Cannot upload to Dropbox." "$log_file"
+                return 1
+            fi
+            
+            # Setup Dropbox credentials if available
+            if [ -n "$DROPBOX_ACCESS_TOKEN" ]; then
+                # Create or update the config file for dropbox-uploader
+                local dropbox_config="${HOME}/.dropbox_uploader"
+                echo "OAUTH_ACCESS_TOKEN=$DROPBOX_ACCESS_TOKEN" > "$dropbox_config"
+                chmod 600 "$dropbox_config"
+                
+                log "Using Dropbox credentials from secrets file" "$log_file"
+            fi
+            
+            # Upload to Dropbox
+            local dropbox_path="/backups/$(basename "$backup_file")"
+            
+            log "Uploading to Dropbox: $dropbox_path" "$log_file"
+            if dropbox-uploader upload "$backup_file" "$dropbox_path"; then
+                log "Successfully uploaded to Dropbox: $dropbox_path" "$log_file"
+                return 0
+            else
+                log "Failed to upload to Dropbox: $dropbox_path" "$log_file"
+                return 1
+            fi
+            ;;
+        
+        gdrive|google)
+            # Check if Google Drive CLI is installed
+            if ! command -v gdrive >/dev/null 2>&1; then
+                log "Google Drive CLI not installed. Cannot upload to Google Drive." "$log_file"
+                return 1
+            fi
+            
+            # Setup Google Drive credentials if available
+            if [ -n "$GDRIVE_CLIENT_ID" ] && [ -n "$GDRIVE_CLIENT_SECRET" ] && [ -n "$GDRIVE_REFRESH_TOKEN" ]; then
+                # Create or update the credentials file
+                local gdrive_config_dir="${HOME}/.gdrive"
+                mkdir -p "$gdrive_config_dir"
+                
+                log "Using Google Drive credentials from secrets file" "$log_file"
+            fi
+            
+            # Upload to Google Drive
+            log "Uploading to Google Drive: $(basename "$backup_file")" "$log_file"
+            if gdrive upload "$backup_file"; then
+                log "Successfully uploaded to Google Drive" "$log_file"
+                return 0
+            else
+                log "Failed to upload to Google Drive" "$log_file"
+                return 1
+            fi
+            ;;
         
         *)
-            log "ERROR: Unsupported cloud provider: $provider" "$log_file" "$silent"
+            log "Unknown cloud provider: $provider" "$log_file"
             return 1
             ;;
     esac
-    
-    log "Successfully uploaded to $provider: $filename" "$log_file" "$silent"
-    return 0
 }
+
+# Download backup from cloud storage
+download_from_cloud() {
+    local backup_name=$1
+    local download_dir=$2
+    local provider=$3
+    local log_file=${4:-}
+    local bandwidth_limit=${5:-0}
+    
+    local limit_cmd=""
+    if [ "$bandwidth_limit" -gt 0 ]; then
+        limit_cmd="--bwlimit=$bandwidth_limit"
+    fi
+    
+    case "$provider" in
+        aws|s3)
+            # Check AWS CLI is installed
+            if ! command -v aws >/dev/null 2>&1; then
+                log "AWS CLI not installed. Cannot download from S3." "$log_file"
+                return 1
+            fi
+            
+            # Download from S3
+            local bucket="${S3_BUCKET:-webdev-backups}"
+            local s3_path="s3://$bucket/$backup_name"
+            local local_path="$download_dir/$backup_name"
+            
+            log "Downloading from S3: $s3_path" "$log_file"
+            if aws s3 cp $limit_cmd "$s3_path" "$local_path"; then
+                log "Successfully downloaded from S3: $local_path" "$log_file"
+                return 0
+            else
+                log "Failed to download from S3: $s3_path" "$log_file"
+                return 1
+            fi
+            ;;
+            
+        do|spaces|digitalocean)
+            # Check AWS CLI is installed (DO Spaces uses S3-compatible API)
+            if ! command -v aws >/dev/null 2>&1; then
+                log "AWS CLI not installed. Cannot download from DigitalOcean Spaces." "$log_file"
+                return 1
+            fi
+            
+            # Set DigitalOcean Spaces credentials if available
+            if [ -n "$DO_SPACES_KEY" ] && [ -n "$DO_SPACES_SECRET" ]; then
+                # Store the current AWS creds if they exist
+                local AWS_KEY_BACKUP="$AWS_ACCESS_KEY_ID"
+                local AWS_SECRET_BACKUP="$AWS_SECRET_ACCESS_KEY"
+                local AWS_REGION_BACKUP="$AWS_DEFAULT_REGION"
+                
+                # Set DO credentials
+                export AWS_ACCESS_KEY_ID="$DO_SPACES_KEY"
+                export AWS_SECRET_ACCESS_KEY="$DO_SPACES_SECRET"
+                export AWS_DEFAULT_REGION="${DO_SPACES_REGION:-nyc3}"
+                log "Using DigitalOcean Spaces credentials from secrets file" "$log_file"
+            else
+                log "DigitalOcean Spaces credentials not found in secrets file." "$log_file"
+                return 1
+            fi
+            
+            # Download from DigitalOcean Spaces
+            local bucket="${DO_SPACES_BUCKET:-webdev-backups}"
+            local endpoint="${DO_SPACES_ENDPOINT:-nyc3.digitaloceanspaces.com}"
+            local spaces_path="s3://$bucket/$backup_name"
+            local local_path="$download_dir/$backup_name"
+            
+            log "Downloading from DigitalOcean Spaces: $spaces_path" "$log_file"
+            if aws s3 cp $limit_cmd "$spaces_path" "$local_path" --endpoint-url "https://$endpoint"; then
+                log "Successfully downloaded from DigitalOcean Spaces: $local_path" "$log_file"
+                
+                # Restore original AWS credentials if they existed
+                if [ -n "$AWS_KEY_BACKUP" ]; then
+                    export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
+                    export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
+                    export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
+                fi
+                
+                return 0
+            else
+                log "Failed to download from DigitalOcean Spaces: $spaces_path" "$log_file"
+                
+                # Restore original AWS credentials if they existed
+                if [ -n "$AWS_KEY_BACKUP" ]; then
+                    export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
+                    export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
+                    export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
+                fi
+                
+                return 1
+            fi
+            ;;
+        
+        dropbox)
+            # Check if Dropbox CLI is installed
+            if ! command -v dropbox-uploader >/dev/null 2>&1; then
+                log "Dropbox Uploader not installed. Cannot download from Dropbox." "$log_file"
+                return 1
+            fi
+            
+            # Download from Dropbox
+            local dropbox_path="/backups/$backup_name"
+            local local_path="$download_dir/$backup_name"
+            
+            log "Downloading from Dropbox: $dropbox_path" "$log_file"
+            if dropbox-uploader download "$dropbox_path" "$local_path"; then
+                log "Successfully downloaded from Dropbox: $local_path" "$log_file"
+                return 0
+            else
+                log "Failed to download from Dropbox: $dropbox_path" "$log_file"
+                return 1
+            fi
+            ;;
+        
+        gdrive|google)
+            # Check if Google Drive CLI is installed
+            if ! command -v gdrive >/dev/null 2>&1; then
+                log "Google Drive CLI not installed. Cannot download from Google Drive." "$log_file"
+                return 1
+            fi
+            
+            # First, find the file by name
+            local file_id=$(gdrive list --query "name = '$backup_name'" --no-header | head -1 | awk '{print $1}')
+            
+            if [ -z "$file_id" ]; then
+                log "File not found in Google Drive: $backup_name" "$log_file"
+                return 1
+            fi
+            
+            # Download from Google Drive
+            log "Downloading from Google Drive: $backup_name (ID: $file_id)" "$log_file"
+            if gdrive download --path "$download_dir" "$file_id"; then
+                log "Successfully downloaded from Google Drive: $download_dir/$backup_name" "$log_file"
+                return 0
+            else
+                log "Failed to download from Google Drive: $backup_name" "$log_file"
+                return 1
+            fi
+            ;;
+        
+        *)
+            log "Unknown cloud provider: $provider" "$log_file"
+            return 1
+            ;;
+    esac
+}
+
+# Find changed files since a specific date
+find_changed_files() {
+    local directory=$1
+    local since_date=$2
+    local exclude_pattern=${3:-"node_modules"}
+    
+    # Find files modified since given date
+    find "$directory" -type f -not -path "*/$exclude_pattern/*" -newermt "$since_date" -print
+}
+
+# End of filesystem operations

@@ -4,7 +4,7 @@
 
 # Source the shared utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/utils.sh"
+source "$SCRIPT_DIR/../utils/utils.sh"
 
 # Create a backup report
 create_backup_report() {
@@ -116,11 +116,12 @@ EOF
     if [ -f "$stats_file" ]; then
         echo "<h2>Project Details</h2>" >> "$report_file"
         echo "<table>" >> "$report_file"
-        echo "<tr><th>Project</th><th>Source Size</th><th>Backup Size</th><th>Ratio</th></tr>" >> "$report_file"
+        echo "<tr><th>Project</th><th>Source Dir</th><th>Source Size</th><th>Backup Size</th><th>Ratio</th></tr>" >> "$report_file"
         
-        while IFS=, read -r project src_size archive_size ratio; do
+        while IFS=, read -r project src_dir src_size archive_size ratio; do
             echo "<tr>" >> "$report_file"
             echo "<td>$project</td>" >> "$report_file"
+            echo "<td>$src_dir</td>" >> "$report_file"
             echo "<td>$(format_size "$src_size")</td>" >> "$report_file"
             echo "<td>$(format_size "$archive_size")</td>" >> "$report_file"
             echo "<td>${ratio}x</td>" >> "$report_file"
@@ -247,80 +248,141 @@ EOF
     fi
 }
 
+# Create a simple default chart with an error message
+create_default_chart() {
+    local chart_file=$1
+    local message=${2:-"No data available for chart"}
+    
+    # Create a simple transparent PNG as placeholder
+    echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > "$chart_file"
+    return 0
+}
+
 # Generate space forecast
-generate_space_forecast() {
+generate_space_forecast_safe() {
     local history_log=$1
     local forecast_file=$2
     local forecast_days=${3:-30}
     
-    # Ensure sufficient history exists (at least 3 entries)
+    # Check if gnuplot is available
+    if ! command -v gnuplot >/dev/null 2>&1; then
+        echo "Error: gnuplot is not installed. Cannot generate forecast."
+        create_default_chart "$forecast_file" "gnuplot not installed"
+        return 0
+    fi
+    
+    # Ensure sufficient history exists (at least 2 entries)
     local entry_count=$(grep -c "BACKUP:" "$history_log")
-    if [ "$entry_count" -lt 3 ]; then
-        echo "Insufficient backup history for forecasting (need at least 3 entries)"
-        return 1
+    if [ "$entry_count" -lt 2 ]; then
+        echo "Insufficient backup history for forecasting (need at least 2 entries)"
+        create_default_chart "$forecast_file" "Need at least 2 backups for forecast"
+        return 0
     fi
     
     # Create a temporary data file
     local temp_data=$(mktemp)
     
-    # Extract dates and sizes
+    # Extract dates and sizes with error handling
     grep -A2 "BACKUP:" "$history_log" | grep "Total Size:" | \
         sed -E 's/.*Total Size: ([0-9.]+) ([A-Z]+).*/\1 \2/' | \
         awk '{
+            if (NF < 2) {
+                # Skip invalid lines
+                next;
+            }
+            
             multiplier = 1;
             if ($2 == "KB") multiplier = 1024;
             else if ($2 == "MB") multiplier = 1024*1024;
             else if ($2 == "GB") multiplier = 1024*1024*1024;
             else if ($2 == "TB") multiplier = 1024*1024*1024*1024;
-            print NR, $1 * multiplier;
-        }' > "$temp_data"
+            
+            if ($1 ~ /^[0-9]+(\.[0-9]+)?$/) {
+                print NR, ($1 * multiplier);
+            }
+        }' > "$temp_data" 2>/dev/null
     
-    # Calculate trend line using awk
+    # Check if we have any valid data
+    if [ ! -s "$temp_data" ]; then
+        echo "No valid data for forecast chart"
+        create_default_chart "$forecast_file" "No valid size data found"
+        rm -f "$temp_data"
+        return 0
+    fi
+    
+    # Calculate trend line using awk with error handling
     local trend_data=$(mktemp)
-    awk '{
-        sum_x += $1;
-        sum_y += $2;
-        sum_xy += $1*$2;
-        sum_xx += $1*$1;
-        n++;
+    awk '
+    BEGIN {
+        n = 0;
+        sum_x = 0;
+        sum_y = 0;
+        sum_xy = 0;
+        sum_xx = 0;
+    }
+    {
+        if (NF >= 2 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+(\.[0-9]+)?$/) {
+            sum_x += $1;
+            sum_y += $2;
+            sum_xy += $1*$2;
+            sum_xx += $1*$1;
+            n++;
+        }
     }
     END {
-        a = (n*sum_xy - sum_x*sum_y) / (n*sum_xx - sum_x*sum_x);
-        b = (sum_y - a*sum_x) / n;
+        if (n < 2) {
+            print "0 0";
+            exit;
+        }
+        
+        denominator = (n*sum_xx - sum_x*sum_x);
+        
+        # Avoid division by zero
+        if (denominator == 0) {
+            a = 0;
+        } else {
+            a = (n*sum_xy - sum_x*sum_y) / denominator;
+        }
+        
+        # Avoid division by zero
+        if (n == 0) {
+            b = 0;
+        } else {
+            b = (sum_y - a*sum_x) / n;
+        }
         
         # Output coefficients for forecast
         print b, a;
-        
-        # Generate forecast points
-        for (i=1; i<=n+'$forecast_days'; i++) {
-            y = a*i + b;
-            if (y < 0) y = 0;  # Prevent negative forecasts
-            print i, y;
-        }
-    }' "$temp_data" > "$trend_data"
+    }' "$temp_data" > "$trend_data" 2>/dev/null
     
     # Get coefficients for report
-    read b a < "$trend_data"
+    local a=0
+    local b=0
+    if [ -s "$trend_data" ]; then
+        read b a < "$trend_data"
+    fi
     
-    # Create a gnuplot script
+    # Validate coefficients
+    if ! [[ "$a" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || ! [[ "$b" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+        a=0
+        b=0
+    fi
+    
+    # Create a simple gnuplot script
     local gnuplot_script=$(mktemp)
     
     cat > "$gnuplot_script" << EOF
 set terminal png enhanced size 800,500
 set output "$forecast_file"
-set title "Backup Size Forecast ($forecast_days Days)"
+set title "Backup Size Forecast"
 set xlabel "Backup Number"
 set ylabel "Size (bytes)"
 set grid
 set key outside right top
 set style line 1 lc rgb "#3498db" lt 1 lw 2 pt 7 ps 1.5
-set style line 2 lc rgb "#e74c3c" lt 1 lw 2 pt 0
-set style line 3 lc rgb "#2ecc71" lt 2 lw 1 pt 0
 
-# Plot data points and forecast line
-plot "$temp_data" using 1:2 with points ls 1 title "Actual Backup Sizes", \
-     "$trend_data" using 1:2 with lines ls 2 title "Forecast Trend", \
-     $a*x+$b with lines ls 3 title "Trend Line"
+# Plot data points only first for safety
+plot "$temp_data" using 1:2 with points ls 1 title "Actual Backup Sizes"
 EOF
     
     # Run gnuplot
@@ -569,138 +631,3 @@ EOF
 }
 
 # End of reporting functions
-# Create a simple default chart with an error message
-create_default_chart() {
-    local chart_file=$1
-    local message=${2:-"No data available for chart"}
-    
-    # Create a simple transparent PNG as placeholder
-    echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > "$chart_file"
-    return 0
-}
-
-# Safer version of generate_space_forecast that handles errors
-generate_space_forecast_safe() {
-    local history_log=$1
-    local forecast_file=$2
-    local forecast_days=${3:-30}
-    
-    # Check if gnuplot is available
-    if ! command -v gnuplot >/dev/null 2>&1; then
-        echo "Error: gnuplot is not installed. Cannot generate forecast."
-        create_default_chart "$forecast_file" "gnuplot not installed"
-        return 0
-    fi
-    
-    # Ensure sufficient history exists (at least 2 entries)
-    local entry_count=$(grep -c "BACKUP:" "$history_log")
-    if [ "$entry_count" -lt 2 ]; then
-        echo "Insufficient backup history for forecasting (need at least 2 entries)"
-        create_default_chart "$forecast_file" "Need at least 2 backups for forecast"
-        return 0
-    fi
-    
-    # Create a temporary data file
-    local temp_data=$(mktemp)
-    
-    # Extract dates and sizes with error handling
-    grep -A2 "BACKUP:" "$history_log" | grep "Total Size:" | \
-        sed -E 's/.*Total Size: ([0-9.]+) ([A-Z]+).*/\1 \2/' | \
-        awk '{
-            if (NF < 2) {
-                # Skip invalid lines
-                next;
-            }
-            
-            multiplier = 1;
-            if ($2 == "KB") multiplier = 1024;
-            else if ($2 == "MB") multiplier = 1024*1024;
-            else if ($2 == "GB") multiplier = 1024*1024*1024;
-            else if ($2 == "TB") multiplier = 1024*1024*1024*1024;
-            
-            if ($1 ~ /^[0-9]+(\.[0-9]+)?$/) {
-                print NR, ($1 * multiplier);
-            }
-        }' > "$temp_data" 2>/dev/null
-    
-    # Check if we have any valid data
-    if [ ! -s "$temp_data" ]; then
-        echo "No valid data for forecast chart"
-        create_default_chart "$forecast_file" "No valid size data found"
-        rm -f "$temp_data"
-        return 0
-    fi
-    
-    # Calculate trend line using awk with error handling
-    local trend_data=$(mktemp)
-    awk '
-    BEGIN {
-        n = 0;
-        sum_x = 0;
-        sum_y = 0;
-        sum_xy = 0;
-        sum_xx = 0;
-    }
-    {
-        if (NF >= 2 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+(\.[0-9]+)?$/) {
-            sum_x += $1;
-            sum_y += $2;
-            sum_xy += $1*$2;
-            sum_xx += $1*$1;
-            n++;
-        }
-    }
-    END {
-        if (n < 2) {
-            print "0 0";
-            exit;
-        }
-        
-        denominator = (n*sum_xx - sum_x*sum_x);
-        
-        # Avoid division by zero
-        if (denominator == 0) {
-            a = 0;
-        } else {
-            a = (n*sum_xy - sum_x*sum_y) / denominator;
-        }
-        
-        # Avoid division by zero
-        if (n == 0) {
-            b = 0;
-        } else {
-            b = (sum_y - a*sum_x) / n;
-        }
-        
-        # Output coefficients for forecast
-        print b, a;
-    }' "$temp_data" > "$trend_data" 2>/dev/null
-    
-    # Get coefficients for report
-    local a=0
-    local b=0
-    if [ -s "$trend_data" ]; then
-        read b a < "$trend_data"
-    fi
-    
-    # Validate coefficients
-    if ! [[ "$a" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || ! [[ "$b" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
-        a=0
-        b=0
-    fi
-    
-    # Create a simple gnuplot script
-    local gnuplot_script=$(mktemp)
-    
-    cat > "$gnuplot_script" << EOF
-set terminal png enhanced size 800,500
-set output "$forecast_file"
-set title "Backup Size Forecast"
-set xlabel "Backup Number"
-set ylabel "Size (bytes)"
-set grid
-set key outside right top
-set style line 1 lc rgb "#3498db" lt 1 lw 2 pt 7 ps 1.5
-
-# Plot data points only first for safety
-plot "$temp_data" using 1:2 with points ls 1 title "Actual Backup Sizes"

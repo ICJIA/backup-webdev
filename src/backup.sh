@@ -4,13 +4,11 @@
 
 # Source the shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Use absolute paths to be certain
-source "/home/cschw/backup-webdev/src/core/config.sh"
-source "/home/cschw/backup-webdev/src/utils/utils.sh"
-source "/home/cschw/backup-webdev/src/ui/ui.sh" 
-source "/home/cschw/backup-webdev/src/core/fs.sh"
-source "/home/cschw/backup-webdev/src/reports/reporting.sh"
+source "$SCRIPT_DIR/../core/config.sh"
+source "$SCRIPT_DIR/../utils/utils.sh"
+source "$SCRIPT_DIR/../ui/ui.sh"
+source "$SCRIPT_DIR/../core/fs.sh"
+source "$SCRIPT_DIR/../reports/reporting.sh"
 
 # Default values
 SILENT_MODE=false
@@ -27,9 +25,6 @@ CUSTOM_BACKUP_DIR=""
 CUSTOM_SOURCE_DIRS=()
 DRY_RUN=false
 EXTERNAL_BACKUP=false  # Track if this is an external (cloud) backup
-
-# Set BACKUP_DIR from DEFAULT_BACKUP_DIR (from config.sh)
-BACKUP_DIR="$DEFAULT_BACKUP_DIR"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -163,11 +158,6 @@ fi
 
 # For backward compatibility
 SOURCE_DIR="${SOURCE_DIRS[0]}"
-
-# Set backup directory if custom was provided
-if [ -n "$CUSTOM_BACKUP_DIR" ]; then
-    BACKUP_DIR="$CUSTOM_BACKUP_DIR"
-fi
 
 # Verify source directories exist
 for dir in "${SOURCE_DIRS[@]}"; do
