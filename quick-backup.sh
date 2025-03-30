@@ -107,7 +107,8 @@ echo -e "----------------------------------------------"
 # Create a stats file
 STATS_FILE="$FULL_BACKUP_PATH/backup_stats.txt"
 touch "$STATS_FILE"
-echo "project,path,src_size,archive_size,ratio" > "$STATS_FILE"
+# First line should be a comment/header to match the expected format
+echo "project,full_project_path,src_size,archive_size,ratio,structure_file" > "$STATS_FILE"
 
 # Track successes and failures
 successful=0
