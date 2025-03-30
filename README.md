@@ -6,11 +6,13 @@ A robust backup solution for web development projects that supports multiple sou
 
 - **Multi-Directory Backup**: Back up projects from multiple source directories
 - **Flexible Backup Types**: Full, incremental, or differential backups
+- **Quick Backup**: One-click backup using default settings
 - **Compression**: Optimized compression with multi-threading support (via pigz)
 - **Verification**: Integrity verification of backup archives
 - **Exclusion Rules**: Automatically excludes node_modules and other large dependencies
 - **Cloud Integration**: Upload backups to AWS S3, DigitalOcean Spaces, Dropbox, or Google Drive
-- **Reporting**: Detailed HTML reports and email notifications
+- **Reporting**: Detailed HTML reports with directory grouping and email notifications
+- **File Structure Visualization**: Interactive modals showing ASCII file structure diagrams
 - **Dashboard**: Visual dashboard for backup statistics and forecasting
 - **Restore**: Simple project restoration with preview capability
 - **Security**: Built-in security features and encryption support
@@ -59,6 +61,21 @@ Run the tool in interactive mode:
 
 ```bash
 ./webdev-backup.sh
+```
+
+### Quick Backup
+
+Use the Quick Backup option for a streamlined experience:
+
+```bash
+./webdev-backup.sh
+# Then select "2) Quick Backup (Using Default Settings)"
+```
+
+Or directly from command line:
+
+```bash
+./backup.sh --quick
 ```
 
 ### Command-Line Options
@@ -179,7 +196,7 @@ Below is a comprehensive list of all files in the project and their purposes:
 
 You can easily add new source directories:
 
-1. Through the menu system: Select "9) Manage Source Directories" and "1) Add new source directory"
+1. Through the menu system: Select "m) Manage Source Directories" and "1) Add new source directory"
 2. Directly edit `config.sh` and add to the `DEFAULT_SOURCE_DIRS` array
 3. Use the `--sources` command-line option with comma-separated paths
 
@@ -220,6 +237,32 @@ The backup tool includes multiple security enhancements:
 ✅ **Filename Validation**: Detects malicious characters in extracted filenames.  
 ✅ **Safe Extraction**: Uses `--no-same-owner` and `--no-absolute-names` for safer tar extraction.
 
+## Enhanced Reporting
+
+The backup tool generates comprehensive HTML reports with several advanced features:
+
+### Project Directory Grouping
+
+Projects are now organized by their source directories in reports, making it easier to understand which projects come from which locations. Within each directory group, projects are alphabetically sorted for easy reference.
+
+### Interactive Project Details
+
+Each project in the HTML report is interactive:
+
+1. Click on any project row to open a modal with detailed information
+2. View the project's complete file structure in an ASCII tree format
+3. See detailed statistics including compression ratio and file counts
+4. Navigate between projects using a tabbed interface
+
+### Quick Backup Feature
+
+The main menu now includes a Quick Backup option that:
+
+1. Uses all default settings configured in `config.sh`
+2. Shows a summary of what will be backed up before proceeding
+3. Provides a streamlined experience with minimal user interaction
+4. Maintains the same verification and security features as interactive backups
+
 ## Testing
 
 The project includes a comprehensive test suite:
@@ -237,6 +280,7 @@ You can also use the following npm scripts for common operations:
 |--------|-------------|--------|
 | `npm start` | Launch the interactive backup interface | `npm start` |
 | `npm run backup` | Run a standard backup | `npm run backup` |
+| `npm run backup:quick` | Run a Quick Backup with default settings | `npm run backup:quick` |
 | `npm run backup:cloud` | Backup to the cloud storage | `npm run backup:cloud` |
 | `npm run backup:dry` | Perform a dry run (without making changes) | `npm run backup:dry` |
 | `npm run backup:incremental` | Run an incremental backup | `npm run backup:incremental` |

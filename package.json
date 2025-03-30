@@ -1,11 +1,12 @@
 {
   "name": "webdev-backup",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "A robust backup solution for web development projects",
   "main": "webdev-backup.sh",
   "scripts": {
     "start": "./webdev-backup.sh",
     "backup": "./backup.sh",
+    "backup:quick": "./backup.sh --quick",
     "backup:cloud": "./backup.sh --external",
     "backup:dry": "./backup.sh --dry-run",
     "backup:incremental": "./backup.sh --incremental",

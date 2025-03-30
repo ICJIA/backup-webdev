@@ -5,7 +5,7 @@
 # Source the shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
-source "$SCRIPT_DIR/utils.sh"
+source "$SCRIPT_DIR/utils.sh"  # Contains check_required_tools and other utility functions
 source "$SCRIPT_DIR/ui.sh"
 source "$SCRIPT_DIR/fs.sh"
 source "$SCRIPT_DIR/reporting.sh"
@@ -31,6 +31,12 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --silent)
             SILENT_MODE=true
+            shift
+            ;;
+        --quick)
+            SILENT_MODE=true
+            VERIFY_BACKUP=true
+            # Use all default settings from config.sh
             shift
             ;;
         --incremental)
@@ -262,6 +268,8 @@ EXCLUDE_FILE=$(mktemp)
 # Handle project selection based on mode
 log "Found ${#projects[@]} projects in ${SOURCE_DIRS[*]}" "$LOG_FILE" "$SILENT_MODE"
 
+# Determine if we should use interactive project selection
+# Quick backup option should backup all projects without prompt, just like silent mode
 if [ "$SILENT_MODE" = false ]; then
     # Interactive mode - show project list and ask for exclusions
     echo -e "\n${CYAN}===== WebDev Backup Tool =====${NC}"
@@ -273,31 +281,29 @@ if [ "$SILENT_MODE" = false ]; then
         project_names+=($(basename "$project_path"))
     done
     
-    # Interactive project selection
-    if [ "$SILENT_MODE" = false ]; then
-        echo "Projects to backup (all selected by default):"
-        for ((i=0; i<${#project_names[@]}; i++)); do
-            echo "[$i] ${project_names[$i]}"
-        done
+    # Interactive project selection - show project list and ask for exclusions
+    echo "Projects to backup (all selected by default):"
+    for ((i=0; i<${#project_names[@]}; i++)); do
+        echo "[$i] ${project_names[$i]}"
+    done
 
-        echo -e "\nTo exclude projects from backup, enter their numbers separated by spaces."
-        echo "Press Enter to backup all projects."
-        
-        read -p "> " response
-        
-        for num in $response; do
-            if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -lt "${#project_names[@]}" ]; then
-                log "Excluding project: ${project_names[$num]}" "$LOG_FILE" "$SILENT_MODE"
-                echo "${project_names[$num]}" >> "$EXCLUDE_FILE"
-            else
-                log "Warning: Invalid project number: $num" "$LOG_FILE" "$SILENT_MODE"
-                echo -e "${YELLOW}Warning: Invalid project number: $num${NC}"
-            fi
-        done
-    fi
+    echo -e "\nTo exclude projects from backup, enter their numbers separated by spaces."
+    echo "Press Enter to backup all projects."
+    
+    read -p "> " response
+    
+    for num in $response; do
+        if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -lt "${#project_names[@]}" ]; then
+            log "Excluding project: ${project_names[$num]}" "$LOG_FILE" "$SILENT_MODE"
+            echo "${project_names[$num]}" >> "$EXCLUDE_FILE"
+        else
+            log "Warning: Invalid project number: $num" "$LOG_FILE" "$SILENT_MODE"
+            echo -e "${YELLOW}Warning: Invalid project number: $num${NC}"
+        fi
+    done
 else
-    # Silent mode - backup everything, no interaction
-    log "Silent mode: Backing up all projects" "$LOG_FILE" "$SILENT_MODE"
+    # Silent mode or Quick backup - backup everything, no interaction
+    log "Silent mode or Quick backup: Backing up all projects" "$LOG_FILE" "$SILENT_MODE"
 fi
 
 # Get excluded projects list
@@ -454,8 +460,61 @@ for project_path in "${projects[@]}"; do
         
         log "Project $project backed up successfully (Compressed: $FORMATTED_ARCHIVE_SIZE, Ratio: ${RATIO}x)" "$LOG_FILE" "$SILENT_MODE"
         
-        # Add to stats file with full project path
-        echo "$project,$project_path,$PROJECT_SRC_SIZE,$ARCHIVE_SIZE,$RATIO" >> "$STATS_FILE"
+        # Generate ASCII file structure for the project
+        PROJECT_STRUCTURE_FILE="${BACKUP_DIR}/${project}_structure.txt"
+        mkdir -p "${BACKUP_DIR}/structures"
+        
+        # Create ASCII tree structure using find and a custom script
+        {
+            echo "Structure of $project ($project_path):"
+            echo "----------------------------------------"
+            find "$project_path" -type d -o -type f | sort | while read -r path; do
+                # Skip node_modules and hidden files/dirs for clarity
+                if [[ "$path" == *"node_modules"* || "$(basename "$path")" == .* ]]; then
+                    continue
+                fi
+                
+                # Calculate depth and render ASCII tree
+                rel_path="${path#$project_path/}"
+                if [ "$path" = "$project_path" ]; then
+                    echo "$project/"
+                    continue
+                fi
+                
+                depth=$(echo "$rel_path" | tr -cd '/' | wc -c)
+                prefix=""
+                for ((i=0; i<depth; i++)); do
+                    prefix="${prefix}│   "
+                done
+                
+                # Check if this is the last item at its level
+                is_last=false
+                parent_dir=$(dirname "$path")
+                if [[ "$(find "$parent_dir" -mindepth 1 | sort | tail -n1)" == "$path" ]]; then
+                    is_last=true
+                fi
+                
+                # Replace the last "│   " with "└── " or "├── " based on whether it's the last item
+                if [ "$depth" -gt 0 ]; then
+                    if [ "$is_last" = true ]; then
+                        prefix="${prefix%│   }└── "
+                    else
+                        prefix="${prefix%│   }├── "
+                    fi
+                fi
+                
+                # Display file or directory
+                filename=$(basename "$path")
+                if [ -d "$path" ]; then
+                    echo "$prefix$filename/"
+                else
+                    echo "$prefix$filename"
+                fi
+            done
+        } > "$PROJECT_STRUCTURE_FILE" 2>/dev/null
+        
+        # Add to stats file with full project path and structure file location
+        echo "$project,$project_path,$PROJECT_SRC_SIZE,$ARCHIVE_SIZE,$RATIO,$PROJECT_STRUCTURE_FILE" >> "$STATS_FILE"
         
         # Verify backup if requested
         if [ "$VERIFY_BACKUP" = true ]; then

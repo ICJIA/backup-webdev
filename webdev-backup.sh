@@ -22,7 +22,7 @@ fi
 # Display header
 clear
 echo -e "${CYAN}===============================================${NC}"
-echo -e "${CYAN}|          WebDev Backup Tool v1.6.0         |${NC}"
+echo -e "${CYAN}|          WebDev Backup Tool v1.7.0         |${NC}"
 echo -e "${CYAN}===============================================${NC}"
 echo -e "${GREEN}A robust backup solution for web development projects${NC}"
 echo -e "Current date: $(date '+%Y-%m-%d %H:%M:%S')\n"
@@ -67,24 +67,51 @@ fi
 
 # Main menu
 echo -e "${CYAN}Select an option:${NC}"
-echo "1) Run Backup (Interactive Mode)"
-echo "2) Run Comprehensive Tests"
-echo "3) Run Cleanup Tool"
-echo "4) Restore Backups"
-echo "5) View Backup Dashboard"
-echo "6) View Project Documentation"
-echo "7) View Backup History"
-echo "8) Configure Automated Backups (Cron)"
-echo "9) Manage Source Directories"
+echo "1) Quick Backup (Using Default Settings)"
+echo "2) Run Backup (Interactive Mode)"
+echo "3) Run Comprehensive Tests"
+echo "4) Run Cleanup Tool"
+echo "5) Restore Backups"
+echo "6) View Backup Dashboard"
+echo "7) View Project Documentation"
+echo "8) View Backup History"
+echo "9) Configure Automated Backups (Cron)"
+echo "m) Manage Source Directories"
 echo "0) Advanced Options"
 echo "q) Quit"
 echo
 
 # Get user choice
-read -p "Enter your choice [0-9/q]: " choice
+read -p "Enter your choice [0-9/m/q]: " choice
 
 case "$choice" in
     1)
+        # Quick Backup option that uses default settings
+        echo -e "\n${CYAN}===== Quick Backup =====${NC}"
+        echo -e "${YELLOW}This will run a backup with the following default settings:${NC}"
+        echo -e "  Source directories:"
+        for ((i=0; i<${#DEFAULT_SOURCE_DIRS[@]}; i++)); do
+            echo -e "  - ${DEFAULT_SOURCE_DIRS[$i]}"
+        done
+        echo -e "  Destination: ${DEFAULT_BACKUP_DIR}"
+        echo -e "  Type: Full backup"
+        echo -e "  Compression: Default level (6)"
+        echo -e "  Verification: Enabled"
+        echo -e "  Projects: All projects in source directories"
+        echo
+        # Prompt with default Yes
+        read -p "Start backup now? [Y/n] " confirm
+        if [[ "$confirm" =~ ^[Nn]$ ]]; then
+            echo -e "${YELLOW}Quick backup cancelled.${NC}"
+            sleep 1
+            exec "$0" "$@"  # Restart menu
+        else
+            echo -e "\n${GREEN}Starting quick backup...${NC}\n"
+            sleep 1
+            "$SCRIPT_DIR/backup.sh" --quick "$@"
+        fi
+        ;;
+    2)
         echo -e "\n${CYAN}Select backup storage type:${NC}"
         echo "1) Local Project Storage (Default: $(realpath "${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"))"
         echo "2) External Volume Storage (Custom local path)"
@@ -154,22 +181,22 @@ case "$choice" in
                 ;;
         esac
         ;;
-    2)
+    3)
         echo -e "\n${CYAN}Running comprehensive tests...${NC}\n"
         sleep 1
         "$SCRIPT_DIR/run-tests.sh"
         ;;
-    3)
+    4)
         echo -e "\n${CYAN}Starting cleanup tool...${NC}\n"
         sleep 1
         "$SCRIPT_DIR/cleanup.sh"
         ;;
-    4)
+    5)
         echo -e "\n${CYAN}Starting restore utility...${NC}\n"
         sleep 1
         "$SCRIPT_DIR/restore.sh"
         ;;
-    5)
+    6)
         # Show dashboard if available, otherwise generate one
         echo -e "\n${CYAN}===== WebDev Backup Dashboard =====${NC}\n"
         
@@ -356,7 +383,7 @@ EOL
         read
         exec "$0" "$@"  # Restart menu
         ;;
-    6)
+    7)
         # Display README
         if command -v less >/dev/null 2>&1; then
             less "$SCRIPT_DIR/README.md"
@@ -366,7 +393,7 @@ EOL
         sleep 1
         exec "$0" "$@"  # Restart menu
         ;;
-    7)
+    8)
         # View backup history
         echo -e "\n${CYAN}Backup History:${NC}\n"
         if [ -f "$BACKUP_HISTORY_LOG" ]; then
@@ -381,7 +408,7 @@ EOL
         fi
         exec "$0" "$@"  # Restart menu
         ;;
-    8)
+    9)
         # Automated backups configuration
         echo -e "\n${CYAN}Starting cron configuration utility...${NC}\n"
         sleep 1
@@ -392,8 +419,8 @@ EOL
         read -p "Press Enter to return to the main menu..." dummy
         exec "$0" "$@"  # Restart menu
         ;;
-    9)
-        # New option to manage source directories
+    m)
+        # Option to manage source directories
         clear
         echo -e "${CYAN}===== Manage Source Directories =====${NC}"
         echo -e "Current source directories:"
