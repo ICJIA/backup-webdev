@@ -237,6 +237,41 @@ The backup tool includes multiple security enhancements:
 ✅ **Filename Validation**: Detects malicious characters in extracted filenames.  
 ✅ **Safe Extraction**: Uses `--no-same-owner` and `--no-absolute-names` for safer tar extraction.
 
+## Maintenance and Development
+
+The backup tool includes scripts to help with maintenance and development:
+
+### Organizing Backup Files
+
+The `cleanup-backup-files.sh` script organizes the text files generated during backup:
+
+```bash
+./cleanup-backup-files.sh           # Clean up the latest backup directory
+./cleanup-backup-files.sh --all     # Clean up all backup directories
+./cleanup-backup-files.sh --dry-run # Show what would be done without making changes
+```
+
+This script:
+- Moves structure files to a `structures/` subdirectory
+- Moves log files to a `logs/` subdirectory
+- Creates a metadata.json file with information about the backup
+- Can be configured to run automatically after each backup
+
+### Changelog Management
+
+The `update-changelog.sh` script helps manage the project's git repository and changelog:
+
+```bash
+./update-changelog.sh  # Updates CHANGELOG.md with commits and pushes to git
+```
+
+This script:
+- Pulls the latest changes from the remote repository
+- Pushes local commits to the remote
+- Updates CHANGELOG.md with commit messages and SHAs
+- Optionally creates version tags with semantic versioning
+- Organizes the changelog into released and unreleased sections
+
 ## Enhanced Reporting
 
 The backup tool generates comprehensive HTML reports with several advanced features:

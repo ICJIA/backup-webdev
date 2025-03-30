@@ -20,6 +20,10 @@
     "cleanup:dry": "./cleanup.sh --dry-run",
     "cleanup:all": "./cleanup.sh --clear-backups",
     "cleanup:logs": "./cleanup.sh --all-logs",
+    "organize": "./cleanup-backup-files.sh",
+    "organize:all": "./cleanup-backup-files.sh --all",
+    "organize:dry": "./cleanup-backup-files.sh --dry-run",
+    "release": "./update-changelog.sh",
     "restore": "./restore.sh",
     "restore:list": "./restore.sh --list",
     "cron": "./configure-cron.sh"

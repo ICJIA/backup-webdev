@@ -375,6 +375,11 @@ done
 # Make sure we move to a new line after the progress bar
 echo
 
+# Organize backup files
+echo "Organizing backup files..."
+"$SCRIPT_DIR/cleanup-backup-files.sh" --directory "$BACKUP_DIR" > /dev/null
+echo -e "${GREEN}✓ Backup files organized${NC}"
+
 # Backup completed
 echo -e "\n${CYAN}===== Backup Summary =====${NC}"
 echo "Total projects backed up: $successful"
