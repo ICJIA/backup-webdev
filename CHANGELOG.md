@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+- eb014d4 docs: update CHANGELOG.md with latest commits (cschweda, 2025-03-30)
+
+
 - 66db6cf feat: integrate new scripts with existing tooling (cschweda, 2025-03-30)
 - 07b430c feat: add changelog and backup file organization scripts (cschweda, 2025-03-30)
 - 9d1beba fix: html reporting (cschweda, 2025-03-30)
