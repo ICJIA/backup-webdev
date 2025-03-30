@@ -1,39 +1,87 @@
 #!/bin/bash
 # config.sh - Configuration file for WebDev Backup Tool
+#
+# =====================================================================
+# CONFIGURATION VARIABLES - Modify these values to change backup behavior
+# =====================================================================
 
-# Get the script's directory
+# Get the script's directory - don't modify this
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Default source directories - define as array
+# ----------------
+# Backup Locations
+# ----------------
+
+# Default backup destination directory
+# This is where backups will be stored
+DEFAULT_BACKUP_DIR="/mnt/f/backups"
+
+# Backup naming convention - prefix for backup directories
+BACKUP_PREFIX="webdev_backup"
+
+# ----------------------
+# Default Source Directories
+# ----------------------
+
+# NOTE: By default, the script will auto-detect the following directories:
+# - $HOME/webdev (if it exists)
+# - $HOME/inform6 (if it exists)
+# - The parent directory of this script (if above directories don't exist)
+# - The script directory itself (as last resort)
+#
+# To manually add source directories, add them to this array:
 DEFAULT_SOURCE_DIRS=()
+# Examples:
+# DEFAULT_SOURCE_DIRS=("/home/user/projects" "/home/user/repositories")
 
-# Check for ~/webdev directory and add it if exists
-if [ -d "$HOME/webdev" ]; then
-    DEFAULT_SOURCE_DIRS+=("$HOME/webdev")
-fi
+# ----------------------
+# Cloud Storage Settings
+# ----------------------
 
-# Check for ~/inform6 directory and add it if exists
-if [ -d "$HOME/inform6" ]; then
-    DEFAULT_SOURCE_DIRS+=("$HOME/inform6")
-fi
+# Default cloud storage provider
+# Supported values: "aws", "s3", "do", "spaces", "dropbox", "gdrive", "google" 
+DEFAULT_CLOUD_PROVIDER="do"
 
-# If no default directories found, try to use parent directory of script
+# ----------------------
+# Date/Time Settings
+# ----------------------
+
+# Date format for backup directories and logs
+DATE_FORMAT="%Y-%m-%d_%H-%M-%S"
+
+# =====================================================================
+# IMPLEMENTATION - Don't modify below this line unless you know what you're doing
+# =====================================================================
+
+# Auto-detect source directories if none are explicitly configured
 if [ ${#DEFAULT_SOURCE_DIRS[@]} -eq 0 ]; then
-    # Try to use parent directory of script location
-    parent_dir="$(dirname "$SCRIPT_DIR")"
-    if [ -d "$parent_dir" ] && [ -r "$parent_dir" ]; then
-        DEFAULT_SOURCE_DIRS+=("$parent_dir")
-    else
-        # Fallback to script directory itself
-        DEFAULT_SOURCE_DIRS+=("$SCRIPT_DIR")
+    # Check for ~/webdev directory and add it if exists
+    if [ -d "$HOME/webdev" ]; then
+        DEFAULT_SOURCE_DIRS+=("$HOME/webdev")
+    fi
+    
+    # Check for ~/inform6 directory and add it if exists
+    if [ -d "$HOME/inform6" ]; then
+        DEFAULT_SOURCE_DIRS+=("$HOME/inform6")
+    fi
+    
+    # If no default directories found, try to use parent directory of script
+    if [ ${#DEFAULT_SOURCE_DIRS[@]} -eq 0 ]; then
+        # Try to use parent directory of script location
+        parent_dir="$(dirname "$SCRIPT_DIR")"
+        if [ -d "$parent_dir" ] && [ -r "$parent_dir" ]; then
+            DEFAULT_SOURCE_DIRS+=("$parent_dir")
+        else
+            # Fallback to script directory itself
+            DEFAULT_SOURCE_DIRS+=("$SCRIPT_DIR")
+        fi
     fi
 fi
 
-# For backward compatibility - first directory is the default
+# For backward compatibility - first directory is the default single source
 DEFAULT_SOURCE_DIR="${DEFAULT_SOURCE_DIRS[0]}"
 
-# Default backup destination - pick a reliable location
-DEFAULT_BACKUP_DIR="/mnt/d/backups"
+# Verify and create backup directory if needed
 if [ ! -d "$DEFAULT_BACKUP_DIR" ] || [ ! -w "$DEFAULT_BACKUP_DIR" ]; then
     # Fallback to script directory if default isn't accessible
     DEFAULT_BACKUP_DIR="$SCRIPT_DIR/backups"
@@ -41,26 +89,19 @@ if [ ! -d "$DEFAULT_BACKUP_DIR" ] || [ ! -w "$DEFAULT_BACKUP_DIR" ]; then
     [ ! -d "$DEFAULT_BACKUP_DIR" ] && mkdir -p "$DEFAULT_BACKUP_DIR"
 fi
 
-# Default cloud provider
-DEFAULT_CLOUD_PROVIDER="do"
+# Current date for this run
+DATE=$(date +$DATE_FORMAT)
 
 # Log and test directories
 LOGS_DIR="$SCRIPT_DIR/logs"
 TEST_DIR="$SCRIPT_DIR/test"
 mkdir -p "$LOGS_DIR" "$TEST_DIR"
 
-# Date format for backup directories and logs
-DATE_FORMAT="%Y-%m-%d_%H-%M-%S"
-DATE=$(date +$DATE_FORMAT)
-
-# Backup naming convention
-BACKUP_PREFIX="webdev_backup"
-
 # Log files
 BACKUP_HISTORY_LOG="$LOGS_DIR/backup_history.log"
 TEST_HISTORY_LOG="$TEST_DIR/test_history.log"
 
-# Set BACKUP_DIR to use DEFAULT_BACKUP_DIR
+# Set BACKUP_DIR to use DEFAULT_BACKUP_DIR (can be overridden by command-line arguments)
 BACKUP_DIR="$DEFAULT_BACKUP_DIR"
 
 # Export variables for use in other scripts

@@ -454,8 +454,8 @@ for project_path in "${projects[@]}"; do
         
         log "Project $project backed up successfully (Compressed: $FORMATTED_ARCHIVE_SIZE, Ratio: ${RATIO}x)" "$LOG_FILE" "$SILENT_MODE"
         
-        # Add to stats file
-        echo "$project,$PROJECT_SRC_SIZE,$ARCHIVE_SIZE,$RATIO" >> "$STATS_FILE"
+        # Add to stats file with full project path
+        echo "$project,$project_path,$PROJECT_SRC_SIZE,$ARCHIVE_SIZE,$RATIO" >> "$STATS_FILE"
         
         # Verify backup if requested
         if [ "$VERIFY_BACKUP" = true ]; then
@@ -794,6 +794,23 @@ else
         fi
     fi
     echo -e "${CYAN}Finished at: $(date)${NC}\n"
+    
+    # Ask if the user wants to view the report in browser
+    if [ "$DRY_RUN" != true ] && [ -f "$REPORT_FILE" ]; then
+        echo -e "\n${YELLOW}Would you like to view the backup report in your browser?${NC}"
+        if safe_confirm "Open report in browser?" "n"; then
+            echo -e "${GREEN}Opening backup report in browser...${NC}"
+            if open_in_browser "$REPORT_FILE"; then
+                echo -e "${GREEN}Report opened in browser.${NC}"
+            else
+                echo -e "${YELLOW}Could not open browser automatically. You can find the report here:${NC}"
+                echo -e "${GREEN}$REPORT_FILE${NC}"
+            fi
+        else
+            echo -e "${YELLOW}Report not opened. You can find it here:${NC}"
+            echo -e "${GREEN}$REPORT_FILE${NC}"
+        fi
+    fi
     
     # Exit gracefully
     echo -e "\n${GREEN}Backup operation completed. Thanks for using WebDev Backup Tool!${NC}"

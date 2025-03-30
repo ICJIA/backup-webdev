@@ -532,4 +532,70 @@ check_required_tools() {
     return 0
 }
 
+# Function to open a file in the default browser (in background)
+open_in_browser() {
+    local file_path="$1"
+    
+    # Make sure the file exists
+    if [ ! -f "$file_path" ]; then
+        echo -e "${RED}Error: File not found: $file_path${NC}"
+        return 1
+    fi
+    
+    # Convert to file:// URL if it's a local path and doesn't already have a scheme
+    if [[ ! "$file_path" =~ ^[a-zA-Z]+:// ]]; then
+        # Make sure it's an absolute path
+        if [[ ! "$file_path" =~ ^/ ]]; then
+            file_path="$(pwd)/$file_path"
+        fi
+        file_path="file://$file_path"
+    fi
+    
+    # Create a temporary script to run the browser command
+    local temp_script=$(mktemp)
+    
+    # Make the script executable
+    chmod +x "$temp_script"
+    
+    # Detect OS and write appropriate command to script
+    if [ "$(uname)" == "Darwin" ]; then
+        # macOS
+        echo "#!/bin/bash" > "$temp_script"
+        echo "open \"$file_path\" &>/dev/null" >> "$temp_script"
+    elif [ "$(uname)" == "Linux" ]; then
+        # Linux - try different commands in order
+        echo "#!/bin/bash" > "$temp_script"
+        echo "if command -v xdg-open &>/dev/null; then" >> "$temp_script"
+        echo "    xdg-open \"$file_path\" &>/dev/null" >> "$temp_script"
+        echo "elif command -v gnome-open &>/dev/null; then" >> "$temp_script"
+        echo "    gnome-open \"$file_path\" &>/dev/null" >> "$temp_script"
+        echo "elif command -v kde-open &>/dev/null; then" >> "$temp_script"
+        echo "    kde-open \"$file_path\" &>/dev/null" >> "$temp_script"
+        echo "else" >> "$temp_script"
+        echo "    echo 'No suitable browser command found'" >> "$temp_script"
+        echo "    exit 1" >> "$temp_script"
+        echo "fi" >> "$temp_script"
+    elif [[ "$(uname)" == *"MINGW"* || "$(uname)" == *"MSYS"* || "$(uname)" == *"CYGWIN"* ]]; then
+        # Windows
+        echo "#!/bin/bash" > "$temp_script"
+        echo "start \"$file_path\" &>/dev/null" >> "$temp_script"
+    else
+        echo -e "${YELLOW}Unknown OS. Please open this file manually:${NC}"
+        echo -e "${GREEN}$file_path${NC}"
+        rm -f "$temp_script"
+        return 1
+    fi
+    
+    # Add self-cleanup to script
+    echo "rm -f \"$temp_script\"" >> "$temp_script"
+    
+    # Run the script in the background, completely detached from parent process
+    nohup "$temp_script" >/dev/null 2>&1 &
+    
+    # Brief pause to allow browser to start
+    sleep 0.5
+    
+    return 0
+}
+
 # End of utility functions

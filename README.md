@@ -139,8 +139,8 @@ Run specific tests:
 
 The configuration is stored in `config.sh`. You can modify default settings:
 
-- Source directories (`SOURCE_DIRS`)
-- Backup destination (`BACKUP_DIR`)
+- Source directories (`DEFAULT_SOURCE_DIRS`)
+- Backup destination (`DEFAULT_BACKUP_DIR`)
 - Compression level
 - Email notification settings
 - Cloud storage preferences
@@ -199,6 +199,31 @@ The project includes a comprehensive test suite:
 ./run-all-tests.sh  # Run all tests
 ./run-tests.sh --unit  # Run only unit tests
 ```
+
+## NPM Scripts
+
+You can also use the following npm scripts for common operations:
+
+| Script | Description | Example |
+|--------|-------------|--------|
+| `npm start` | Launch the interactive backup interface | `npm start` |
+| `npm run backup` | Run a standard backup | `npm run backup` |
+| `npm run backup:cloud` | Backup to the cloud storage | `npm run backup:cloud` |
+| `npm run backup:dry` | Perform a dry run (without making changes) | `npm run backup:dry` |
+| `npm run backup:incremental` | Run an incremental backup | `npm run backup:incremental` |
+| `npm run backup:differential` | Run a differential backup | `npm run backup:differential` |
+| `npm run backup:external` | Backup to external location | Edit in package.json first |
+| `npm test` | Run all tests | `npm test` |
+| `npm run test:backup` | Test backup functionality | `npm run test:backup` |
+| `npm run test:cron` | Test cron setup | `npm run test:cron` |
+| `npm run test:tar` | Test tar compatibility across systems | `npm run test:tar` |
+| `npm run cleanup` | Run the cleanup script | `npm run cleanup` |
+| `npm run cleanup:dry` | Preview cleanup without changes | `npm run cleanup:dry` |
+| `npm run cleanup:all` | Clear all backups | `npm run cleanup:all` |
+| `npm run cleanup:logs` | Clear all log files | `npm run cleanup:logs` |
+| `npm run restore` | Restore from backup | `npm run restore` |
+| `npm run restore:list` | List available backups | `npm run restore:list` |
+| `npm run cron` | Configure cron jobs | `npm run cron` |
 
 ## License
 

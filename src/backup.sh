@@ -796,7 +796,7 @@ else
     echo -e "${CYAN}Finished at: $(date)${NC}\n"
     
     # Exit gracefully
-    echo -e "\n${GREEN}Backup operation completed. Thanks for using WebDev Backup Tool!${NC}"
+    echo -e "\n${GREEN}Backup operation completed.${NC}"
 fi
 
 exit 0

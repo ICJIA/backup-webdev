@@ -39,7 +39,7 @@ create_backup_report() {
             color: #333;
         }
         .container {
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
             background: #f9f9f9;
             padding: 20px;
@@ -70,16 +70,26 @@ create_backup_report() {
             width: 100%;
             border-collapse: collapse;
             margin: 20px 0;
+            table-layout: auto;
         }
         th, td {
             padding: 12px 15px;
             text-align: left;
             border-bottom: 1px solid #ddd;
+            word-break: break-word;
+            max-width: 300px;
         }
         th {
             background-color: #3498db;
             color: white;
         }
+        /* Column width control */
+        th:nth-child(1), td:nth-child(1) { width: 15%; } /* Project */
+        th:nth-child(2), td:nth-child(2) { width: 20%; } /* Source Dir */
+        th:nth-child(3), td:nth-child(3) { width: 35%; } /* Full Path */
+        th:nth-child(4), td:nth-child(4) { width: 10%; } /* Source Size */
+        th:nth-child(5), td:nth-child(5) { width: 10%; } /* Backup Size */
+        th:nth-child(6), td:nth-child(6) { width: 10%; } /* Ratio */
         tr:hover {
             background-color: #f5f5f5;
         }
@@ -118,14 +128,14 @@ EOF
         echo "<table>" >> "$report_file"
         echo "<tr><th>Project</th><th>Source Dir</th><th>Full Original Path</th><th>Source Size</th><th>Backup Size</th><th>Ratio</th></tr>" >> "$report_file"
         
-        while IFS=, read -r project src_dir src_size archive_size ratio; do
-            # Determine the full original path
-            local full_path="${src_dir}/${project}"
+        while IFS=, read -r project full_project_path src_size archive_size ratio; do
+            # Get the source directory from the full path (parent directory)
+            local src_dir=$(dirname "$full_project_path")
             
             echo "<tr>" >> "$report_file"
             echo "<td>$project</td>" >> "$report_file"
             echo "<td>$src_dir</td>" >> "$report_file"
-            echo "<td>$full_path</td>" >> "$report_file"
+            echo "<td>$full_project_path</td>" >> "$report_file"
             echo "<td>$(format_size "$src_size")</td>" >> "$report_file"
             echo "<td>$(format_size "$archive_size")</td>" >> "$report_file"
             echo "<td>${ratio}x</td>" >> "$report_file"
