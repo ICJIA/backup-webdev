@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/utils.sh"  # Contains check_required_tools and other utility functions
 source "$SCRIPT_DIR/ui.sh"
-source "$SCRIPT_DIR/fs.sh"
+source "$SCRIPT_DIR/fs.sh"  # Contains find_projects and file operations
 source "$SCRIPT_DIR/reporting.sh"
 
 # Default values
