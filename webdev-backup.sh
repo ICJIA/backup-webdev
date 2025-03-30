@@ -96,7 +96,7 @@ case "$choice" in
         echo -e "  Destination: ${DEFAULT_BACKUP_DIR}"
         echo -e "  Type: Full backup"
         echo -e "  Compression: Default level (6)"
-        echo -e "  Verification: Enabled"
+        echo -e "  Verification: Disabled (for speed)"
         echo -e "  Projects: All projects in source directories"
         echo
         # Prompt with default Yes

@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --quick)
             SILENT_MODE=true
-            VERIFY_BACKUP=true
+            VERIFY_BACKUP=false  # Disable verification for speed
             # Use all default settings from config.sh
             shift
             ;;
@@ -254,8 +254,25 @@ fi
 # Get list of projects
 projects=()
 for dir in "${SOURCE_DIRS[@]}"; do
-    mapfile -t dir_projects < <(find_projects "$dir" 1)
-    projects+=("${dir_projects[@]}")
+    log "Searching for projects in: $dir" "$LOG_FILE" "$SILENT_MODE"
+    
+    # Improve robustness for Quick Backup by setting a timeout
+    if [[ "$*" == *"--quick"* ]]; then
+        # For --quick, use a timeout to prevent hanging
+        dir_project_output=$(timeout 30s find "$dir" -maxdepth 1 -mindepth 1 -type d -not -path "*/\.*" -not -path "*/node_modules*" | sort)
+        if [ -n "$dir_project_output" ]; then
+            mapfile -t dir_projects <<< "$dir_project_output"
+            log "Found ${#dir_projects[@]} projects in $dir" "$LOG_FILE" "$SILENT_MODE"
+            projects+=("${dir_projects[@]}")
+        else
+            log "No projects found in $dir (or search timed out)" "$LOG_FILE" "$SILENT_MODE"
+        fi
+    else
+        # Standard approach for normal backups
+        mapfile -t dir_projects < <(find_projects "$dir" 1)
+        log "Found ${#dir_projects[@]} projects in $dir" "$LOG_FILE" "$SILENT_MODE"
+        projects+=("${dir_projects[@]}")
+    fi
 done
 
 if [ ${#projects[@]} -eq 0 ]; then

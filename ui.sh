@@ -38,7 +38,7 @@ show_backup_help() {
     echo ""
     echo "Options:"
     echo "  --silent                   Run in silent mode (no user interaction, for cron jobs)"
-    echo "  --quick                    Run a Quick Backup with default settings and verification"
+    echo "  --quick                    Run a Quick Backup with default settings (verification disabled for speed)"
     echo "  --incremental              Only backup files changed since last backup"
     echo "  --differential             Only backup files changed since last full backup"
     echo "  --verify                   Verify backup integrity after completion"

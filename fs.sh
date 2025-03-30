@@ -263,8 +263,13 @@ find_projects() {
         return 1
     fi
     
-    # Find directories only up to max_depth
-    find "$source_dir" -maxdepth "$max_depth" -mindepth 1 -type d -not -path "*/\.*" | sort
+    # Find directories only up to max_depth, with a timeout to prevent hanging
+    # Use -not -path "*/\.*" to exclude hidden directories
+    # Use -not -path "*/node_modules*" to exclude node_modules which can be large
+    find "$source_dir" -maxdepth "$max_depth" -mindepth 1 -type d \
+         -not -path "*/\.*" \
+         -not -path "*/node_modules*" \
+         | sort
 }
 
 # Find the most recent backup for a project

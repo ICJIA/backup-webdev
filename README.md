@@ -261,7 +261,7 @@ The main menu now includes a Quick Backup option that:
 1. Uses all default settings configured in `config.sh`
 2. Shows a summary of what will be backed up before proceeding
 3. Provides a streamlined experience with minimal user interaction
-4. Maintains the same verification and security features as interactive backups
+4. Skips verification to maximize speed and performance
 
 ## Testing
 
