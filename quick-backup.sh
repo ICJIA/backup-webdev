@@ -226,13 +226,30 @@ for project_path in "${projects[@]}"; do
         formatted_archive_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $archive_size 2>/dev/null || echo "$archive_size bytes")
         total_backup_size=$((total_backup_size + archive_size))
         
-        # Calculate compression ratio
-        ratio=$(awk "BEGIN {printf \"%.1f\", ($project_size/$archive_size)}")
+        # Calculate compression ratio safely
+        if [ "$archive_size" -gt 0 ] && [ "$project_size" -gt 0 ]; then
+            ratio=$(awk "BEGIN {printf \"%.1f\", ($project_size/$archive_size)}")
+        else
+            ratio="1.0"
+        fi
         
         echo -e "${GREEN}✓ Successfully backed up $project_name (Compressed: $formatted_archive_size, Ratio: ${ratio}x)${NC}" | tee -a "$LOG_FILE"
         
-        # Add to stats
-        echo "$project_name,$project_path,$project_size,$archive_size,$ratio" >> "$STATS_FILE"
+        # Add to stats - ensure all fields are present and valid
+        # Make sure numeric values are actual numbers for the report generator
+        if ! [[ "$project_size" =~ ^[0-9]+$ ]]; then
+            project_size=0
+        fi
+        
+        if ! [[ "$archive_size" =~ ^[0-9]+$ ]]; then
+            archive_size=0
+        fi
+        
+        if ! [[ "$ratio" =~ ^[0-9]*\.?[0-9]+$ ]]; then
+            ratio="1.0"
+        fi
+        
+        echo "$project_name,$project_path,$project_size,$archive_size,$ratio,$structure_file" >> "$STATS_FILE"
         
         # Generate focused file structure for the project - only for smaller projects
         # Skip structure generation for large projects

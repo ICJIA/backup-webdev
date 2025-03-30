@@ -351,9 +351,56 @@ EOF
                 echo "<tr data-project=\"$project\">" >> "$report_file"
                 echo "<td>$project</td>" >> "$report_file"
                 echo "<td>$current_dir</td>" >> "$report_file"
-                echo "<td>$(format_size "$src_size")</td>" >> "$report_file"
-                echo "<td>$(format_size "$archive_size")</td>" >> "$report_file"
-                echo "<td>${ratio}x</td>" >> "$report_file"
+                
+                # Format sizes carefully, ensuring we have valid numbers and handling invalid values
+                if [[ "$src_size" =~ ^[0-9]+$ ]] && [ "$src_size" -gt 0 ]; then
+                    # Custom inline size formatting to avoid function call issues
+                    local src_size_human
+                    if [ "$src_size" -ge 1073741824 ]; then
+                        src_size_human=$(awk "BEGIN {printf \"%.2f GB\", $src_size/1073741824}")
+                    elif [ "$src_size" -ge 1048576 ]; then
+                        src_size_human=$(awk "BEGIN {printf \"%.2f MB\", $src_size/1048576}")
+                    elif [ "$src_size" -ge 1024 ]; then
+                        src_size_human=$(awk "BEGIN {printf \"%.2f KB\", $src_size/1024}")
+                    else
+                        src_size_human="${src_size} B"
+                    fi
+                    echo "<td>$src_size_human</td>" >> "$report_file"
+                else
+                    echo "<td>Unknown</td>" >> "$report_file"
+                fi
+                
+                # Format backup size similarly
+                if [[ "$archive_size" =~ ^[0-9]+$ ]] && [ "$archive_size" -gt 0 ]; then
+                    local archive_size_human
+                    if [ "$archive_size" -ge 1073741824 ]; then
+                        archive_size_human=$(awk "BEGIN {printf \"%.2f GB\", $archive_size/1073741824}")
+                    elif [ "$archive_size" -ge 1048576 ]; then
+                        archive_size_human=$(awk "BEGIN {printf \"%.2f MB\", $archive_size/1048576}")
+                    elif [ "$archive_size" -ge 1024 ]; then
+                        archive_size_human=$(awk "BEGIN {printf \"%.2f KB\", $archive_size/1024}")
+                    else
+                        archive_size_human="${archive_size} B"
+                    fi
+                    echo "<td>$archive_size_human</td>" >> "$report_file"
+                else
+                    echo "<td>Unknown</td>" >> "$report_file"
+                fi
+                
+                # Format ratio with explicit verification that we have a valid number
+                if [[ "$ratio" =~ ^[0-9]*\.?[0-9]+$ ]] && (( $(echo "$ratio > 0" | bc -l) )); then
+                    echo "<td>${ratio}x</td>" >> "$report_file"
+                else
+                    # Calculate the ratio directly if both sizes are valid
+                    if [[ "$src_size" =~ ^[0-9]+$ ]] && [[ "$archive_size" =~ ^[0-9]+$ ]] && 
+                       [ "$src_size" -gt 0 ] && [ "$archive_size" -gt 0 ]; then
+                        local calculated_ratio=$(awk "BEGIN {printf \"%.1f\", ($src_size/$archive_size)}")
+                        echo "<td>${calculated_ratio}x</td>" >> "$report_file"
+                    else
+                        echo "<td>N/A</td>" >> "$report_file"
+                    fi
+                fi
+                
                 echo "</tr>" >> "$report_file"
             done
         done
@@ -406,10 +453,7 @@ EOF
                             <div class="detail-label">Source Directory:</div>
                             <div id="modal-src-dir" class="detail-value"></div>
                         </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Full Path:</div>
-                            <div id="modal-full-path" class="detail-value"></div>
-                        </div>
+                        <!-- Full path removed as requested -->
                         <div class="detail-item">
                             <div class="detail-label">Source Size:</div>
                             <div id="modal-src-size" class="detail-value"></div>
@@ -488,13 +532,12 @@ EOF
                 // Fill the modal with row data
                 document.getElementById("modal-project").textContent = projectName;
                 document.getElementById("modal-src-dir").textContent = cells[1].textContent;
-                document.getElementById("modal-full-path").textContent = cells[2].textContent;
-                document.getElementById("modal-src-size").textContent = cells[3].textContent;
-                document.getElementById("modal-backup-size").textContent = cells[4].textContent;
-                document.getElementById("modal-ratio").textContent = cells[5].textContent;
+                document.getElementById("modal-src-size").textContent = cells[2].textContent;
+                document.getElementById("modal-backup-size").textContent = cells[3].textContent;
+                document.getElementById("modal-ratio").textContent = cells[4].textContent;
                 
                 // Estimate files count based on size (just a rough estimate)
-                const sizeText = cells[3].textContent;
+                const sizeText = cells[2].textContent; // Source size column
                 let filesCount = "N/A";
                 
                 if (sizeText.includes("KB")) {
