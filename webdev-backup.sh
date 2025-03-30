@@ -108,7 +108,8 @@ case "$choice" in
         else
             echo -e "\n${GREEN}Starting quick backup...${NC}\n"
             sleep 1
-            "$SCRIPT_DIR/backup.sh" --quick "$@"
+            # Use the dedicated quick-backup.sh script instead of backup.sh with --quick
+            "$SCRIPT_DIR/quick-backup.sh"
         fi
         ;;
     2)

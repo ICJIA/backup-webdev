@@ -6,7 +6,7 @@
   "scripts": {
     "start": "./webdev-backup.sh",
     "backup": "./backup.sh",
-    "backup:quick": "./backup.sh --quick",
+    "backup:quick": "./quick-backup.sh",
     "backup:cloud": "./backup.sh --external",
     "backup:dry": "./backup.sh --dry-run",
     "backup:incremental": "./backup.sh --incremental",

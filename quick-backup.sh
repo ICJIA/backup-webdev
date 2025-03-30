@@ -1,0 +1,194 @@
+#!/bin/bash
+# quick-backup.sh - A simplified standalone script for quick backups
+# Created to resolve freezing issues with the main backup script
+
+# Set up basic variables
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/utils.sh"
+
+# Define colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Set default paths
+BACKUP_DIR="${DEFAULT_BACKUP_DIR:-$SCRIPT_DIR/backups}"
+SOURCE_DIRS=("${DEFAULT_SOURCE_DIRS[@]}")
+DATE=$(date '+%Y-%m-%d_%H-%M-%S')
+BACKUP_NAME="webdev_backup_$DATE"
+FULL_BACKUP_PATH="$BACKUP_DIR/$BACKUP_NAME"
+
+echo -e "${CYAN}===== WebDev Quick Backup =====${NC}"
+echo -e "${YELLOW}Starting quick backup at $(date)${NC}"
+
+# Create backup directory
+echo "Creating backup directory: $FULL_BACKUP_PATH"
+mkdir -p "$FULL_BACKUP_PATH"
+if [ ! -d "$FULL_BACKUP_PATH" ]; then
+    echo -e "${RED}ERROR: Failed to create backup directory!${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ Created backup directory${NC}"
+
+# Create a log file
+LOG_FILE="$FULL_BACKUP_PATH/backup_log.log"
+touch "$LOG_FILE"
+echo "$(date): Starting quick backup" >> "$LOG_FILE"
+
+# Function to find projects quickly
+find_projects_quick() {
+    local dir="$1"
+    echo "Searching for projects in: $dir" | tee -a "$LOG_FILE"
+    
+    # Set a strict timeout to prevent hanging
+    timeout 10s find "$dir" -maxdepth 1 -mindepth 1 -type d \
+        -not -path "*/\.*" \
+        -not -path "*/node_modules*" 2>/dev/null | sort
+}
+
+# Find all projects in source directories
+echo "Finding projects in source directories..."
+projects=()
+for dir in "${SOURCE_DIRS[@]}"; do
+    echo "Checking directory: $dir"
+    
+    # Skip if directory doesn't exist
+    if [ ! -d "$dir" ]; then
+        echo -e "${YELLOW}Warning: Directory does not exist: $dir${NC}" | tee -a "$LOG_FILE"
+        continue
+    fi
+    
+    # Find projects
+    echo "Finding projects in $dir..." | tee -a "$LOG_FILE"
+    dir_project_output=$(find_projects_quick "$dir")
+    
+    if [ -n "$dir_project_output" ]; then
+        while IFS= read -r project_path; do
+            echo "Found project: $project_path" | tee -a "$LOG_FILE"
+            projects+=("$project_path")
+        done <<< "$dir_project_output"
+    else
+        echo -e "${YELLOW}No projects found in $dir${NC}" | tee -a "$LOG_FILE"
+    fi
+done
+
+# Check if we found any projects
+total_projects=${#projects[@]}
+echo "Total projects found: $total_projects" | tee -a "$LOG_FILE"
+
+if [ $total_projects -eq 0 ]; then
+    echo -e "${RED}ERROR: No projects found to backup!${NC}" | tee -a "$LOG_FILE"
+    echo "Please check your source directories:"
+    for dir in "${SOURCE_DIRS[@]}"; do
+        echo "  - $dir"
+    done
+    exit 1
+fi
+
+# Display projects that will be backed up
+echo -e "${CYAN}The following projects will be backed up:${NC}"
+for ((i=0; i<${#projects[@]}; i++)); do
+    project_name=$(basename "${projects[$i]}")
+    echo "  ($((i+1))/$total_projects) $project_name"
+done
+
+# Start backup process
+echo -e "\n${CYAN}Starting backup process...${NC}"
+echo "Backup location: $FULL_BACKUP_PATH"
+echo "Started at: $(date)" | tee -a "$LOG_FILE"
+
+# Create a stats file
+STATS_FILE="$FULL_BACKUP_PATH/backup_stats.txt"
+touch "$STATS_FILE"
+echo "project,path,src_size,archive_size,ratio" > "$STATS_FILE"
+
+# Track successes and failures
+successful=0
+failed=0
+total_src_size=0
+total_backup_size=0
+
+# Backup each project
+for project_path in "${projects[@]}"; do
+    project_name=$(basename "$project_path")
+    echo -e "\n${CYAN}Backing up project: $project_name${NC}" | tee -a "$LOG_FILE"
+    
+    # Create backup file path
+    backup_file="$FULL_BACKUP_PATH/${project_name}_${DATE}.tar.gz"
+    
+    # Get source size (excluding node_modules)
+    src_dir=$(dirname "$project_path")
+    project_size=$(du -sb --exclude="node_modules" "$project_path" 2>/dev/null | cut -f1)
+    formatted_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $project_size 2>/dev/null || echo "$project_size bytes")
+    total_src_size=$((total_src_size + project_size))
+    
+    echo "Project size: $formatted_size" | tee -a "$LOG_FILE"
+    echo "Creating backup: $backup_file" | tee -a "$LOG_FILE"
+    
+    # Create tar archive, excluding node_modules
+    if tar -czf "$backup_file" --exclude="*/node_modules/*" -C "$src_dir" "$(basename "$project_path")" 2>> "$LOG_FILE"; then
+        # Get archive size
+        archive_size=$(du -sb "$backup_file" 2>/dev/null | cut -f1)
+        formatted_archive_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $archive_size 2>/dev/null || echo "$archive_size bytes")
+        total_backup_size=$((total_backup_size + archive_size))
+        
+        # Calculate compression ratio
+        ratio=$(awk "BEGIN {printf \"%.1f\", ($project_size/$archive_size)}")
+        
+        echo -e "${GREEN}✓ Successfully backed up $project_name (Compressed: $formatted_archive_size, Ratio: ${ratio}x)${NC}" | tee -a "$LOG_FILE"
+        
+        # Add to stats
+        echo "$project_name,$project_path,$project_size,$archive_size,$ratio" >> "$STATS_FILE"
+        
+        # Generate simple file structure for the project (without depth)
+        echo "Generating file structure..." | tee -a "$LOG_FILE"
+        structure_file="$FULL_BACKUP_PATH/${project_name}_structure.txt"
+        echo "Structure of $project_name ($project_path):" > "$structure_file"
+        echo "----------------------------------------" >> "$structure_file"
+        find "$project_path" -type d -not -path "*/node_modules*" -not -path "*/\.*" -maxdepth 2 | sort >> "$structure_file"
+        
+        successful=$((successful + 1))
+    else
+        echo -e "${RED}✗ Failed to backup $project_name${NC}" | tee -a "$LOG_FILE"
+        failed=$((failed + 1))
+    fi
+    
+    # Give a progress update
+    echo -e "${CYAN}Progress: $successful/$total_projects complete, $failed failed${NC}"
+done
+
+# Backup completed
+echo -e "\n${CYAN}===== Backup Summary =====${NC}"
+echo "Total projects backed up: $successful"
+echo "Failed backups: $failed"
+echo "Total source size: $(numfmt --to=iec-i --suffix=B --format="%.1f" $total_src_size 2>/dev/null || echo "$total_src_size bytes")"
+echo "Total backup size: $(numfmt --to=iec-i --suffix=B --format="%.1f" $total_backup_size 2>/dev/null || echo "$total_backup_size bytes")"
+
+if [ $successful -gt 0 ] && [ $total_backup_size -gt 0 ] && [ $total_src_size -gt 0 ]; then
+    overall_ratio=$(awk "BEGIN {printf \"%.1f\", ($total_src_size/$total_backup_size)}")
+    echo "Overall compression ratio: ${overall_ratio}x"
+fi
+
+echo "Backup location: $FULL_BACKUP_PATH"
+echo "Finished at: $(date)"
+
+# Add completion message to log
+echo "$(date): Backup completed. $successful successful, $failed failed" >> "$LOG_FILE"
+
+# Display final message
+if [ $failed -eq 0 ]; then
+    echo -e "\n${GREEN}Backup completed successfully!${NC}"
+else
+    echo -e "\n${YELLOW}Backup completed with $failed failures.${NC}"
+    echo "Check the log file for details: $LOG_FILE"
+fi
+
+# Exit with appropriate status code
+if [ $failed -eq 0 ]; then
+    exit 0
+else
+    exit 1
+fi
