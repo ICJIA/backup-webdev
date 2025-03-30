@@ -143,29 +143,81 @@ for project_path in "${projects[@]}"; do
     # Add visual progress indicator
     echo -n "Compressing: " | tee -a "$LOG_FILE"
     
-    # Run tar with timeout and show progress
-    (
-        # Create tar archive, excluding node_modules
-        timeout 300s tar -czf "$backup_file" --exclude="*/node_modules/*" -C "$src_dir" "$(basename "$project_path")" 2>> "$LOG_FILE" &
+    # Special handling for projects with the same name as their parent directory
+    # This fixes the issue with "webdev" and "inform6" projects
+    project_basename=$(basename "$project_path")
+    dir_basename=$(basename "$src_dir")
+    
+    if [ "$project_basename" = "$dir_basename" ]; then
+        echo "Special handling for $project_basename (same name as parent dir)" | tee -a "$LOG_FILE"
         
-        # Get PID of tar process
-        tar_pid=$!
+        # Create a temporary directory
+        tmp_dir=$(mktemp -d)
         
-        # Show activity while tar is running
-        c=0
-        spin='-\|/'
-        while kill -0 $tar_pid 2>/dev/null; do
-            echo -ne "\b${spin:c++%4:1}"
-            sleep 0.5
-        done
-        
-        # Wait for tar to finish
-        wait $tar_pid
-        tar_status=$?
-        
-        # Return the status
-        exit $tar_status
-    )
+        # Run tar with timeout and show progress - using parent directory approach
+        (
+            # Special approach: First copy to temp dir, then tar from there
+            echo -n "Copying... " | tee -a "$LOG_FILE"
+            
+            # Copy project to temp dir (excluding node_modules)
+            timeout 60s rsync -a --exclude="node_modules" "$project_path/" "$tmp_dir/" 2>> "$LOG_FILE"
+            
+            if [ $? -eq 0 ]; then
+                echo -n "Compressing... " | tee -a "$LOG_FILE"
+                # Create tar archive from temp dir
+                timeout 300s tar -czf "$backup_file" -C "$tmp_dir" . 2>> "$LOG_FILE" &
+                
+                # Get PID of tar process
+                tar_pid=$!
+                
+                # Show activity while tar is running
+                c=0
+                spin='-\|/'
+                while kill -0 $tar_pid 2>/dev/null; do
+                    echo -ne "\b${spin:c++%4:1}"
+                    sleep 0.5
+                done
+                
+                # Wait for tar to finish
+                wait $tar_pid
+                tar_status=$?
+                
+                # Clean up temp dir
+                rm -rf "$tmp_dir"
+                
+                # Return the status
+                exit $tar_status
+            else
+                echo "Failed to copy project" | tee -a "$LOG_FILE"
+                rm -rf "$tmp_dir"
+                exit 1
+            fi
+        )
+    else
+        # Run tar with timeout and show progress - normal case
+        (
+            # Create tar archive, excluding node_modules
+            timeout 300s tar -czf "$backup_file" --exclude="*/node_modules/*" -C "$src_dir" "$project_basename" 2>> "$LOG_FILE" &
+            
+            # Get PID of tar process
+            tar_pid=$!
+            
+            # Show activity while tar is running
+            c=0
+            spin='-\|/'
+            while kill -0 $tar_pid 2>/dev/null; do
+                echo -ne "\b${spin:c++%4:1}"
+                sleep 0.5
+            done
+            
+            # Wait for tar to finish
+            wait $tar_pid
+            tar_status=$?
+            
+            # Return the status
+            exit $tar_status
+        )
+    fi
     
     # Check tar result
     if [ $? -eq 0 ]; then
