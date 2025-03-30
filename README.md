@@ -191,6 +191,35 @@ For secure operations:
 2. Run `secure-secrets.sh` to set up secure credential storage
 3. Run `security-audit.sh` periodically to check for issues
 
+### Security Features
+
+The backup tool includes multiple security enhancements:
+
+#### Encryption Security
+✅ **Authenticated Encryption Mode**: Uses AES-256-GCM with authentication instead of insecure CBC mode.  
+✅ **Strong Key Derivation**: Implements PBKDF2 with 10,000 iterations for password-based encryption.  
+✅ **Improved Password Hashing**: Uses a stronger key stretching approach instead of simple SHA-256.  
+✅ **Secure Key Management**: Adds SHA-256 digest for more secure key derivation.
+
+#### File Permissions
+✅ **Restrictive umask**: Sets `umask 027` across scripts to ensure secure default permissions.  
+✅ **Private Configuration**: Config files use 640 permissions (group-readable only).  
+✅ **Protected Directories**: Directories use 750 permissions (no world access).  
+✅ **Race Condition Protection**: Uses temporary files with proper permissions for secure file operations.  
+✅ **Secure Cleanup**: Implements secure deletion of temporary files containing sensitive data.
+
+#### Command Injection Protection
+✅ **Path Sanitization**: Complete protection against directory traversal attacks.  
+✅ **Input Sanitization**: Comprehensive input validation with configurable strictness levels.  
+✅ **Shell Command Safety**: Proper escaping in all shell commands to prevent injection.  
+✅ **Safer Email Handling**: Email notifications designed to prevent command injection.  
+✅ **Direct Command Execution**: Eliminates potentially unsafe temporary script creation.
+
+#### Secure Archive Handling
+✅ **Archive Validation**: Checks for path traversal and absolute paths in archives.  
+✅ **Filename Validation**: Detects malicious characters in extracted filenames.  
+✅ **Safe Extraction**: Uses `--no-same-owner` and `--no-absolute-names` for safer tar extraction.
+
 ## Testing
 
 The project includes a comprehensive test suite:

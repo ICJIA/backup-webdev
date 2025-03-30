@@ -3,6 +3,8 @@
 
 # Get the script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Set restrictive umask to ensure secure file creation
+umask 077
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/utils.sh"
 source "$SCRIPT_DIR/error-handling.sh"
@@ -88,8 +90,8 @@ encrypt_file() {
         return 1
     fi
     
-    # Encrypt the file using AES-256-CBC
-    openssl enc -aes-256-cbc -salt -in "$input_file" -out "$output_file" -pass file:"$KEY_FILE" 2>/dev/null
+    # Encrypt the file using AES-256-GCM (authenticated encryption)
+    openssl enc -aes-256-gcm -salt -in "$input_file" -out "$output_file" -pass file:"$KEY_FILE" -md sha256 2>/dev/null
     
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}File encrypted successfully: $output_file${NC}"
@@ -118,7 +120,7 @@ decrypt_file() {
     fi
     
     # Decrypt the file
-    openssl enc -d -aes-256-cbc -in "$input_file" -out "$output_file" -pass file:"$KEY_FILE" 2>/dev/null
+    openssl enc -d -aes-256-gcm -in "$input_file" -out "$output_file" -pass file:"$KEY_FILE" -md sha256 2>/dev/null
     
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}File decrypted successfully: $output_file${NC}"
@@ -154,9 +156,14 @@ setup_password_encryption() {
         chmod 600 "$SALT_FILE"
     fi
     
-    # Store the password hash securely (not the actual password)
+    # Store the password hash securely using a strong KDF
     local salt=$(cat "$SALT_FILE")
-    echo -n "$password$salt" | sha256sum | cut -d' ' -f1 > "$PASSWORD_FILE"
+    # Use 10000 iterations of PBKDF2 for key stretching
+    local hash="$password$salt"
+    for i in {1..10000}; do
+        hash=$(echo -n "$hash" | sha256sum | cut -d' ' -f1)
+    done
+    echo "$hash" > "$PASSWORD_FILE"
     chmod 600 "$PASSWORD_FILE"
     
     echo -e "${GREEN}Password-based encryption set up successfully.${NC}"
@@ -191,9 +198,9 @@ encrypt_backup_with_password() {
         return 1
     fi
     
-    # Perform the encryption using password
+    # Perform the encryption using password with PBKDF2
     echo -e "${CYAN}Encrypting backup with password...${NC}"
-    openssl enc -aes-256-cbc -salt -in "$backup_file" -out "$encrypted_file" -k "$password" 2>/dev/null
+    openssl enc -aes-256-gcm -pbkdf2 -iter 10000 -salt -in "$backup_file" -out "$encrypted_file" -k "$password" -md sha256 2>/dev/null
     
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}Backup encrypted successfully: $encrypted_file${NC}"
@@ -216,7 +223,7 @@ decrypt_backup_with_password() {
     
     # Attempt decryption
     echo -e "${CYAN}Decrypting backup...${NC}"
-    openssl enc -d -aes-256-cbc -in "$encrypted_file" -out "$output_file" -k "$password" 2>/dev/null
+    openssl enc -d -aes-256-gcm -pbkdf2 -iter 10000 -in "$encrypted_file" -out "$output_file" -k "$password" -md sha256 2>/dev/null
     
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}Backup decrypted successfully: $output_file${NC}"

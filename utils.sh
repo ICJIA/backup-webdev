@@ -2,6 +2,9 @@
 # utils.sh - Shared utility functions for backup-webdev
 # This file contains common functions used across all scripts
 
+# Set restrictive umask to ensure secure file creation
+umask 027
+
 # Source the shared configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
@@ -135,32 +138,68 @@ safe_confirm() {
     fi
 }
 
-# SECURITY IMPROVEMENT: Safe path handling function
+# SECURITY IMPROVEMENT: Comprehensive safe path handling function
 validate_path() {
     local path="$1"
     local type="$2"  # "dir" or "file"
     
-    # Remove any potential command injection characters
-    path=$(echo "$path" | tr -d ';&|$()`')
+    # First, check for null or empty path
+    if [ -z "$path" ]; then
+        echo "Error: Empty path provided"
+        return 1
+    fi
     
+    # Remove any potential command injection characters
+    local sanitized_path=$(echo "$path" | tr -d ';&|$()`<>{}[]!?*#~')
+    
+    # Prevent directory traversal attempts
+    # Replace any instance of "../" or "..\\" with nothing
+    sanitized_path=$(echo "$sanitized_path" | sed 's|\.\./||g' | sed 's|\.\.\\||g')
+    
+    # Ensure it's an absolute path or relative to home for directories
     if [ "$type" = "dir" ]; then
-        # Ensure it's an absolute path or relative to home
-        if [[ ! "$path" =~ ^/ && ! "$path" =~ ^~ ]]; then
+        if [[ ! "$sanitized_path" =~ ^/ && ! "$sanitized_path" =~ ^~ ]]; then
             echo "Error: Directory path must be absolute or relative to home"
             return 1
         fi
         
-        # Further validations could be added here
+        # Check that the directory exists or can be created safely
+        if [ ! -d "$sanitized_path" ]; then
+            # Verify parent directory exists before allowing creation
+            local parent_dir=$(dirname "$sanitized_path")
+            if [ ! -d "$parent_dir" ]; then
+                echo "Error: Parent directory does not exist: $parent_dir"
+                return 1
+            fi
+        fi
     fi
     
-    echo "$path"
+    echo "$sanitized_path"
 }
 
-# SECURITY IMPROVEMENT: Function to sanitize input
+# SECURITY IMPROVEMENT: Comprehensive function to sanitize input against command injection
 sanitize_input() {
     local input="$1"
-    # Remove potentially dangerous characters
-    echo "$input" | tr -d ';&|$()`'
+    local strict="${2:-false}"  # strict mode removes more characters
+    
+    if [ -z "$input" ]; then
+        echo ""
+        return 0
+    fi
+    
+    # Basic protection against command injection
+    local sanitized=$(echo "$input" | tr -d ';&|$()`')
+    
+    # More aggressive sanitization for highly sensitive contexts
+    if [ "$strict" = "true" ]; then
+        sanitized=$(echo "$sanitized" | tr -d '<>{}[]!?*#~\\\r\n\t')
+        # Remove backticks and $() syntax which could be used for command substitution
+        sanitized=$(echo "$sanitized" | sed 's/`[^`]*`//g' | sed 's/\$([^)]*)//g')
+        # Remove common shell command sequences
+        sanitized=$(echo "$sanitized" | sed 's/\b\(sudo\|bash\|sh\|chmod\|chown\|rm\|mv\|cp\|cat\)\b//g')
+    fi
+    
+    echo "$sanitized"
 }
 
 # Verify directory exists and is accessible
@@ -240,30 +279,54 @@ verify_backup() {
     if [ "$thorough" = true ]; then
         log "Performing thorough integrity verification..." "$log_file" "$silent_mode"
         
-        # Create temporary directory for extraction test
+        # Create temporary directory for extraction test with secure permissions
         local temp_dir=$(mktemp -d)
+        chmod 700 "$temp_dir"
         log "Using temporary directory for extraction test: $temp_dir" "$log_file" "$silent_mode"
         
-        # Attempt to extract a small portion (just list files then extract one small file)
-        local file_count=$(tar -tzf "$backup_file" | wc -l)
+        # Safely list archive contents (no extraction yet)
+        local file_list=$(mktemp)
+        chmod 600 "$file_list"
+        tar -tzf "$backup_file" > "$file_list" 2>/dev/null
+        local file_count=$(wc -l < "$file_list")
         log "Archive contains $file_count files/directories" "$log_file" "$silent_mode"
+        
+        # Check for dangerous paths in the archive that could lead to directory traversal
+        if grep -q -E '^/|^\.\./|/\.\./|\.\./' "$file_list"; then
+            log "✗ WARNING: Archive contains absolute or traversal paths - potential security risk!" "$log_file" "$silent_mode"
+            rm -f "$file_list"
+            rm -rf "$temp_dir"
+            return 1
+        fi
         
         # Try to extract a small text file for verification
         # Find the first small file (likely a .md, .txt, .json, etc.)
-        local small_file=$(tar -tzf "$backup_file" | grep -E '\.(md|txt|json|js|css|html)$' | head -1)
+        local small_file=$(grep -E '\.(md|txt|json|js|css|html)$' "$file_list" | head -1)
         
         if [ -n "$small_file" ]; then
-            if tar -xzf "$backup_file" -C "$temp_dir" "$small_file" 2>/dev/null; then
+            # Validate path before extraction
+            if [[ "$small_file" =~ [;&|$()] ]]; then
+                log "✗ Archive contains potentially malicious filenames" "$log_file" "$silent_mode"
+                rm -f "$file_list"
+                rm -rf "$temp_dir"
+                return 1
+            fi
+            
+            # Safe extraction with --no-same-owner to avoid privilege escalation
+            # and --no-absolute-names to prevent overwriting system files
+            if tar -xzf "$backup_file" --no-same-owner --no-absolute-names -C "$temp_dir" "$small_file" 2>/dev/null; then
                 log "✓ Successfully extracted test file: $small_file" "$log_file" "$silent_mode"
                 if [ -f "$temp_dir/$small_file" ]; then
                     log "✓ Extracted file exists and is readable" "$log_file" "$silent_mode"
                 else
                     log "✗ Extracted file does not exist or is not readable" "$log_file" "$silent_mode"
+                    rm -f "$file_list"
                     rm -rf "$temp_dir"
                     return 1
                 fi
             else
                 log "✗ Failed to extract test file" "$log_file" "$silent_mode"
+                rm -f "$file_list"
                 rm -rf "$temp_dir"
                 return 1
             fi
@@ -271,7 +334,8 @@ verify_backup() {
             log "No suitable small file found for extraction test, skipping this step" "$log_file" "$silent_mode"
         fi
         
-        # Clean up
+        # Clean up safely
+        rm -f "$file_list"
         rm -rf "$temp_dir"
     fi
     
@@ -280,7 +344,7 @@ verify_backup() {
     return 0
 }
 
-# Send email notification
+# Secure email notification function
 send_email_notification() {
     local subject=$1
     local message=$2
@@ -292,39 +356,72 @@ send_email_notification() {
         return 0
     fi
     
+    # Validate recipient email format
+    if ! [[ "$recipient" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        echo "Invalid email format: $recipient"
+        return 1
+    fi
+    
     # Check if mail command exists
     if ! command -v mail >/dev/null 2>&1; then
         echo "Cannot send email - mail command not found"
         return 1
     fi
     
+    # Sanitize inputs to prevent command injection
+    local safe_subject=$(sanitize_input "$subject" "true")
+    local safe_message=$(sanitize_input "$message")
+    local safe_recipient=$(sanitize_input "$recipient" "true")
+    
     # If credentials are available, use them
     if [[ -n "$EMAIL_USERNAME" && -n "$EMAIL_PASSWORD" && -n "$EMAIL_SMTP_SERVER" ]]; then
-        # Create temporary mailrc file
+        # Create temporary mailrc file with secure permissions
         local mailrc_file=$(mktemp)
-        echo "set smtp=$EMAIL_SMTP_SERVER" > "$mailrc_file"
-        echo "set smtp-use-starttls" >> "$mailrc_file"
-        echo "set smtp-auth=login" >> "$mailrc_file"
-        echo "set smtp-auth-user=$EMAIL_USERNAME" >> "$mailrc_file"
-        echo "set smtp-auth-password=$EMAIL_PASSWORD" >> "$mailrc_file"
-        echo "set from=${EMAIL_FROM:-$EMAIL_USERNAME}" >> "$mailrc_file"
+        chmod 600 "$mailrc_file"
+        
+        # Write config to mailrc securely
+        {
+            echo "set smtp=$EMAIL_SMTP_SERVER"
+            echo "set smtp-use-starttls"
+            echo "set smtp-auth=login"
+            echo "set smtp-auth-user=$EMAIL_USERNAME"
+            echo "set smtp-auth-password=$EMAIL_PASSWORD"
+            echo "set from=${EMAIL_FROM:-$EMAIL_USERNAME}"
+        } > "$mailrc_file"
+        
+        # Create a temporary message file with secure permissions
+        local message_file=$(mktemp)
+        chmod 600 "$message_file"
+        echo "$safe_message" > "$message_file"
         
         # Send with or without attachment
         if [[ -n "$attachment" && -f "$attachment" ]]; then
-            MAILRC="$mailrc_file" EMAIL="$EMAIL_USERNAME" echo "$message" | mail -s "$subject" -a "$attachment" "$recipient"
+            MAILRC="$mailrc_file" EMAIL="$EMAIL_USERNAME" mail -s "$safe_subject" -a "$attachment" "$safe_recipient" < "$message_file"
         else
-            MAILRC="$mailrc_file" EMAIL="$EMAIL_USERNAME" echo "$message" | mail -s "$subject" "$recipient"
+            MAILRC="$mailrc_file" EMAIL="$EMAIL_USERNAME" mail -s "$safe_subject" "$safe_recipient" < "$message_file"
         fi
         
-        # Clean up
-        rm -f "$mailrc_file"
+        # Securely clean up temporary files with sensitive data
+        if command -v shred >/dev/null 2>&1; then
+            shred -u "$mailrc_file" "$message_file"
+        else
+            # Overwrite with random data if shred not available
+            dd if=/dev/urandom of="$mailrc_file" bs=1k count=1 conv=notrunc >/dev/null 2>&1
+            dd if=/dev/urandom of="$message_file" bs=1k count=1 conv=notrunc >/dev/null 2>&1
+            rm -f "$mailrc_file" "$message_file"
+        fi
     else
         # Basic sending without authentication
+        echo "$safe_message" > /tmp/email_message_$$
+        chmod 600 /tmp/email_message_$$
+        
         if [[ -n "$attachment" && -f "$attachment" ]]; then
-            echo "$message" | mail -s "$subject" -a "$attachment" "$recipient"
+            mail -s "$safe_subject" -a "$attachment" "$safe_recipient" < /tmp/email_message_$$
         else
-            echo "$message" | mail -s "$subject" "$recipient"
+            mail -s "$safe_subject" "$safe_recipient" < /tmp/email_message_$$
         fi
+        
+        rm -f /tmp/email_message_$$
     fi
     
     return $?
@@ -532,13 +629,34 @@ check_required_tools() {
     return 0
 }
 
-# Function to open a file in the default browser (in background)
+# Secure function to open a file in the default browser (in background)
 open_in_browser() {
     local file_path="$1"
+    
+    # Sanitize the file path
+    file_path=$(validate_path "$file_path" "file")
     
     # Make sure the file exists
     if [ ! -f "$file_path" ]; then
         echo -e "${RED}Error: File not found: $file_path${NC}"
+        return 1
+    fi
+    
+    # Only allow specific file types for browser opening
+    local extension="${file_path##*.}"
+    local allowed_extensions=("html" "htm" "pdf" "txt" "md" "csv" "json" "xml")
+    local is_allowed=false
+    
+    for allowed in "${allowed_extensions[@]}"; do
+        if [ "$extension" == "$allowed" ]; then
+            is_allowed=true
+            break
+        fi
+    done
+    
+    if [ "$is_allowed" == "false" ]; then
+        echo -e "${RED}Error: Unsupported file type for browser opening: .$extension${NC}"
+        echo -e "${YELLOW}For security reasons, only certain file types can be opened in the browser.${NC}"
         return 1
     fi
     
@@ -551,46 +669,31 @@ open_in_browser() {
         file_path="file://$file_path"
     fi
     
-    # Create a temporary script to run the browser command
-    local temp_script=$(mktemp)
-    
-    # Make the script executable
-    chmod +x "$temp_script"
-    
-    # Detect OS and write appropriate command to script
+    # Directly open the file based on OS - avoid using temporary scripts
     if [ "$(uname)" == "Darwin" ]; then
         # macOS
-        echo "#!/bin/bash" > "$temp_script"
-        echo "open \"$file_path\" &>/dev/null" >> "$temp_script"
+        open "$file_path" &>/dev/null &
     elif [ "$(uname)" == "Linux" ]; then
-        # Linux - try different commands in order
-        echo "#!/bin/bash" > "$temp_script"
-        echo "if command -v xdg-open &>/dev/null; then" >> "$temp_script"
-        echo "    xdg-open \"$file_path\" &>/dev/null" >> "$temp_script"
-        echo "elif command -v gnome-open &>/dev/null; then" >> "$temp_script"
-        echo "    gnome-open \"$file_path\" &>/dev/null" >> "$temp_script"
-        echo "elif command -v kde-open &>/dev/null; then" >> "$temp_script"
-        echo "    kde-open \"$file_path\" &>/dev/null" >> "$temp_script"
-        echo "else" >> "$temp_script"
-        echo "    echo 'No suitable browser command found'" >> "$temp_script"
-        echo "    exit 1" >> "$temp_script"
-        echo "fi" >> "$temp_script"
+        # Linux - try different commands
+        if command -v xdg-open &>/dev/null; then
+            xdg-open "$file_path" &>/dev/null &
+        elif command -v gnome-open &>/dev/null; then
+            gnome-open "$file_path" &>/dev/null &
+        elif command -v kde-open &>/dev/null; then
+            kde-open "$file_path" &>/dev/null &
+        else
+            echo -e "${YELLOW}No suitable browser command found. Please open this file manually:${NC}"
+            echo -e "${GREEN}$file_path${NC}"
+            return 1
+        fi
     elif [[ "$(uname)" == *"MINGW"* || "$(uname)" == *"MSYS"* || "$(uname)" == *"CYGWIN"* ]]; then
         # Windows
-        echo "#!/bin/bash" > "$temp_script"
-        echo "start \"$file_path\" &>/dev/null" >> "$temp_script"
+        start "$file_path" &>/dev/null &
     else
         echo -e "${YELLOW}Unknown OS. Please open this file manually:${NC}"
         echo -e "${GREEN}$file_path${NC}"
-        rm -f "$temp_script"
         return 1
     fi
-    
-    # Add self-cleanup to script
-    echo "rm -f \"$temp_script\"" >> "$temp_script"
-    
-    # Run the script in the background, completely detached from parent process
-    nohup "$temp_script" >/dev/null 2>&1 &
     
     # Brief pause to allow browser to start
     sleep 0.5
