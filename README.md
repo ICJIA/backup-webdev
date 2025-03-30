@@ -139,27 +139,41 @@ Run specific tests:
 
 The configuration is stored in `config.sh`. You can modify default settings:
 
-- Source directories (`DEFAULT_SOURCE_DIRS`)
-- Backup destination (`DEFAULT_BACKUP_DIR`)
+- Source directories (`SOURCE_DIRS`)
+- Backup destination (`BACKUP_DIR`)
 - Compression level
 - Email notification settings
 - Cloud storage preferences
 
 ## File Structure
 
-- `backup.sh` - Main backup script
-- `webdev-backup.sh` - Interactive launcher interface
-- `restore.sh` - Backup restoration script
-- `config.sh` - Configuration settings
-- `utils.sh` - Utility functions
-- `ui.sh` - User interface functions
-- `fs.sh` - Filesystem operations
-- `reporting.sh` - Reporting functions
-- `check-config.sh` - Configuration verification
-- `security-audit.sh` - Security audit script
-- `encryption.sh` - Optional encryption functions
-- `run-all-tests.sh` - Comprehensive test suite
-- `dirs-status.sh` - Source directory status report
+Below is a comprehensive list of all files in the project and their purposes:
+
+| Filename              | Purpose                           | Notes                                                  |
+| --------------------- | --------------------------------- | ------------------------------------------------------ |
+| webdev-backup.sh      | Main launcher for the backup tool | Provides interactive menu interface                    |
+| backup.sh             | Core backup script                | Performs full, incremental, or differential backups    |
+| restore.sh            | Restoration utility               | Restores full or partial backups from any backup point |
+| config.sh             | Configuration file                | Defines paths, directories, and default settings       |
+| find-projects.sh      | Project discovery tool            | Locates valid projects in source directories           |
+| encryption.sh         | Encryption utilities              | Encrypts/decrypts backups using OpenSSL                |
+| configure-cron.sh     | Cron job manager                  | Sets up automated backup schedules                     |
+| cleanup.sh            | Maintenance utility               | Removes old backups and temporary files                |
+| ui.sh                 | User interface functions          | Contains UI components for the interactive interface   |
+| utils.sh              | Utility functions                 | Shared helper functions used across scripts            |
+| fs.sh                 | Filesystem utilities              | Functions for file and directory operations            |
+| error-handling.sh     | Error management                  | Standardized error handling and reporting              |
+| reporting.sh          | Reporting functions               | Creates backup reports and summaries                   |
+| security-audit.sh     | Security checker                  | Analyzes permissions and security issues               |
+| secure-permissions.sh | Permission manager                | Sets appropriate permissions on backup files           |
+| secure-secrets.sh     | Secret management                 | Handles encryption keys and sensitive data             |
+| setup-alias.sh        | Command alias setup               | Creates shell aliases for easy tool access             |
+| check-config.sh       | Configuration validator           | Verifies configuration correctness                     |
+| dirs-status.sh        | Directory status tool             | Reports on source/destination directories              |
+| run-tests.sh          | Test runner                       | Executes specific test suites                          |
+| run-all-tests.sh      | Comprehensive test suite          | Runs all tests to verify functionality                 |
+| test-backup.sh        | Backup tester                     | Tests backup functionality specifically                |
+| test-vars.sh          | Variable tester                   | Tests environment variables and configuration          |
 
 ## Adding a New Source Directory
 

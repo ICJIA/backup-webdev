@@ -116,12 +116,16 @@ EOF
     if [ -f "$stats_file" ]; then
         echo "<h2>Project Details</h2>" >> "$report_file"
         echo "<table>" >> "$report_file"
-        echo "<tr><th>Project</th><th>Source Dir</th><th>Source Size</th><th>Backup Size</th><th>Ratio</th></tr>" >> "$report_file"
+        echo "<tr><th>Project</th><th>Source Dir</th><th>Full Original Path</th><th>Source Size</th><th>Backup Size</th><th>Ratio</th></tr>" >> "$report_file"
         
         while IFS=, read -r project src_dir src_size archive_size ratio; do
+            # Determine the full original path
+            local full_path="${src_dir}/${project}"
+            
             echo "<tr>" >> "$report_file"
             echo "<td>$project</td>" >> "$report_file"
             echo "<td>$src_dir</td>" >> "$report_file"
+            echo "<td>$full_path</td>" >> "$report_file"
             echo "<td>$(format_size "$src_size")</td>" >> "$report_file"
             echo "<td>$(format_size "$archive_size")</td>" >> "$report_file"
             echo "<td>${ratio}x</td>" >> "$report_file"
