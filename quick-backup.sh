@@ -100,6 +100,10 @@ echo -e "\n${CYAN}Starting backup process...${NC}"
 echo "Backup location: $FULL_BACKUP_PATH"
 echo "Started at: $(date)" | tee -a "$LOG_FILE"
 
+# Print a header for the progress display
+echo -e "\n${YELLOW}Project backup progress:${NC}"
+echo -e "----------------------------------------------"
+
 # Create a stats file
 STATS_FILE="$FULL_BACKUP_PATH/backup_stats.txt"
 touch "$STATS_FILE"
@@ -119,17 +123,52 @@ for project_path in "${projects[@]}"; do
     # Create backup file path
     backup_file="$FULL_BACKUP_PATH/${project_name}_${DATE}.tar.gz"
     
-    # Get source size (excluding node_modules)
+    # Get source size (excluding node_modules) - with a timeout
     src_dir=$(dirname "$project_path")
-    project_size=$(du -sb --exclude="node_modules" "$project_path" 2>/dev/null | cut -f1)
+    echo "Calculating size of $project_name..." | tee -a "$LOG_FILE"
+    project_size=$(timeout 10s du -sb --exclude="node_modules" "$project_path" 2>/dev/null | cut -f1)
+    
+    # If size calculation times out or fails, use a default value
+    if [ -z "$project_size" ]; then
+        echo "Size calculation timed out, using estimate" | tee -a "$LOG_FILE"
+        project_size=1000000  # Default size of 1MB
+    fi
+    
     formatted_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $project_size 2>/dev/null || echo "$project_size bytes")
     total_src_size=$((total_src_size + project_size))
     
     echo "Project size: $formatted_size" | tee -a "$LOG_FILE"
     echo "Creating backup: $backup_file" | tee -a "$LOG_FILE"
     
-    # Create tar archive, excluding node_modules
-    if tar -czf "$backup_file" --exclude="*/node_modules/*" -C "$src_dir" "$(basename "$project_path")" 2>> "$LOG_FILE"; then
+    # Add visual progress indicator
+    echo -n "Compressing: " | tee -a "$LOG_FILE"
+    
+    # Run tar with timeout and show progress
+    (
+        # Create tar archive, excluding node_modules
+        timeout 300s tar -czf "$backup_file" --exclude="*/node_modules/*" -C "$src_dir" "$(basename "$project_path")" 2>> "$LOG_FILE" &
+        
+        # Get PID of tar process
+        tar_pid=$!
+        
+        # Show activity while tar is running
+        c=0
+        spin='-\|/'
+        while kill -0 $tar_pid 2>/dev/null; do
+            echo -ne "\b${spin:c++%4:1}"
+            sleep 0.5
+        done
+        
+        # Wait for tar to finish
+        wait $tar_pid
+        tar_status=$?
+        
+        # Return the status
+        exit $tar_status
+    )
+    
+    # Check tar result
+    if [ $? -eq 0 ]; then
         # Get archive size
         archive_size=$(du -sb "$backup_file" 2>/dev/null | cut -f1)
         formatted_archive_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $archive_size 2>/dev/null || echo "$archive_size bytes")
@@ -143,12 +182,28 @@ for project_path in "${projects[@]}"; do
         # Add to stats
         echo "$project_name,$project_path,$project_size,$archive_size,$ratio" >> "$STATS_FILE"
         
-        # Generate simple file structure for the project (without depth)
-        echo "Generating file structure..." | tee -a "$LOG_FILE"
-        structure_file="$FULL_BACKUP_PATH/${project_name}_structure.txt"
-        echo "Structure of $project_name ($project_path):" > "$structure_file"
-        echo "----------------------------------------" >> "$structure_file"
-        find "$project_path" -type d -not -path "*/node_modules*" -not -path "*/\.*" -maxdepth 2 | sort >> "$structure_file"
+        # Generate simple file structure for the project (without depth) - only for smaller projects
+        # Skip structure generation for large projects
+        if [ "$project_size" -lt 100000000 ]; then  # Skip for projects larger than 100MB
+            echo "Generating file structure..." | tee -a "$LOG_FILE"
+            structure_file="$FULL_BACKUP_PATH/${project_name}_structure.txt"
+            echo "Structure of $project_name ($project_path):" > "$structure_file"
+            echo "----------------------------------------" >> "$structure_file"
+            
+            # Use timeout to prevent hanging
+            timeout 5s find "$project_path" -type d -not -path "*/node_modules*" -not -path "*/\.*" -maxdepth 2 2>/dev/null | sort >> "$structure_file"
+            
+            if [ $? -ne 0 ]; then
+                echo "Structure generation timed out, creating minimal structure" | tee -a "$LOG_FILE"
+                echo "Project is too large for detailed structure" >> "$structure_file"
+            fi
+        else
+            echo "Skipping structure generation for large project" | tee -a "$LOG_FILE"
+            structure_file="$FULL_BACKUP_PATH/${project_name}_structure.txt"
+            echo "Structure of $project_name ($project_path):" > "$structure_file"
+            echo "----------------------------------------" >> "$structure_file"
+            echo "Project is too large for detailed structure" >> "$structure_file"
+        fi
         
         successful=$((successful + 1))
     else
@@ -157,8 +212,24 @@ for project_path in "${projects[@]}"; do
     fi
     
     # Give a progress update
-    echo -e "${CYAN}Progress: $successful/$total_projects complete, $failed failed${NC}"
+    percent=$((100 * (successful + failed) / total_projects))
+    bar_size=30
+    completed_size=$((bar_size * (successful + failed) / total_projects))
+    bar="["
+    for ((i=0; i<bar_size; i++)); do
+        if [ $i -lt $completed_size ]; then
+            bar+="="
+        else
+            bar+=" "
+        fi
+    done
+    bar+="]"
+    
+    echo -ne "\r${CYAN}Progress: $bar $percent% ($successful/$total_projects complete, $failed failed)${NC}"
 done
+
+# Make sure we move to a new line after the progress bar
+echo
 
 # Backup completed
 echo -e "\n${CYAN}===== Backup Summary =====${NC}"
