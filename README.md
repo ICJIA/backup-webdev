@@ -228,7 +228,3 @@ You can also use the following npm scripts for common operations:
 ## License
 
 This project is licensed under MIT License - see LICENSE file for details.
-
-## Credits
-
-WebDev Backup Tool - Created by Your Name
