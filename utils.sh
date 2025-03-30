@@ -305,7 +305,8 @@ verify_backup() {
         
         if [ -n "$small_file" ]; then
             # Validate path before extraction
-            if [[ "$small_file" =~ [;&|$()] ]]; then
+            if [[ "$small_file" == *";"* || "$small_file" == *"&"* || "$small_file" == *"|"* || 
+                  "$small_file" == *"$"* || "$small_file" == *"("* || "$small_file" == *")"* ]]; then
                 log "✗ Archive contains potentially malicious filenames" "$log_file" "$silent_mode"
                 rm -f "$file_list"
                 rm -rf "$temp_dir"
@@ -669,34 +670,49 @@ open_in_browser() {
         file_path="file://$file_path"
     fi
     
-    # Directly open the file based on OS - avoid using temporary scripts
+    # Create a temporary script to properly detach the browser process
+    local temp_script=$(mktemp)
+    chmod 700 "$temp_script"
+    
+    # Write the appropriate browser command to the script based on OS
+    echo "#!/bin/bash" > "$temp_script"
+    
     if [ "$(uname)" == "Darwin" ]; then
         # macOS
-        open "$file_path" &>/dev/null &
+        echo "open \"$file_path\" &>/dev/null &" >> "$temp_script"
     elif [ "$(uname)" == "Linux" ]; then
         # Linux - try different commands
-        if command -v xdg-open &>/dev/null; then
-            xdg-open "$file_path" &>/dev/null &
-        elif command -v gnome-open &>/dev/null; then
-            gnome-open "$file_path" &>/dev/null &
-        elif command -v kde-open &>/dev/null; then
-            kde-open "$file_path" &>/dev/null &
-        else
-            echo -e "${YELLOW}No suitable browser command found. Please open this file manually:${NC}"
-            echo -e "${GREEN}$file_path${NC}"
-            return 1
-        fi
+        echo "if command -v xdg-open &>/dev/null; then" >> "$temp_script"
+        echo "    nohup xdg-open \"$file_path\" &>/dev/null &" >> "$temp_script"
+        echo "elif command -v gnome-open &>/dev/null; then" >> "$temp_script"
+        echo "    nohup gnome-open \"$file_path\" &>/dev/null &" >> "$temp_script"
+        echo "elif command -v kde-open &>/dev/null; then" >> "$temp_script"
+        echo "    nohup kde-open \"$file_path\" &>/dev/null &" >> "$temp_script"
+        echo "elif command -v firefox &>/dev/null; then" >> "$temp_script"
+        echo "    nohup firefox \"$file_path\" &>/dev/null &" >> "$temp_script"
+        echo "elif command -v google-chrome &>/dev/null; then" >> "$temp_script"
+        echo "    nohup google-chrome \"$file_path\" &>/dev/null &" >> "$temp_script"
+        echo "else" >> "$temp_script"
+        echo "    echo \"No suitable browser found.\"" >> "$temp_script"
+        echo "    exit 1" >> "$temp_script"
+        echo "fi" >> "$temp_script"
     elif [[ "$(uname)" == *"MINGW"* || "$(uname)" == *"MSYS"* || "$(uname)" == *"CYGWIN"* ]]; then
         # Windows
-        start "$file_path" &>/dev/null &
+        echo "start \"\" \"$file_path\" &>/dev/null &" >> "$temp_script"
     else
-        echo -e "${YELLOW}Unknown OS. Please open this file manually:${NC}"
-        echo -e "${GREEN}$file_path${NC}"
-        return 1
+        echo "echo \"Unknown OS. Cannot open browser automatically.\"" >> "$temp_script"
+        echo "exit 1" >> "$temp_script"
     fi
     
-    # Brief pause to allow browser to start
-    sleep 0.5
+    # Add self-cleanup to the script
+    echo "sleep 1" >> "$temp_script"
+    echo "rm -f \"$temp_script\"" >> "$temp_script"
+    
+    # Launch the script with nohup to completely detach from the parent process
+    nohup "$temp_script" >/dev/null 2>&1 &
+    
+    # Brief pause to allow the script to start executing
+    sleep 1
     
     return 0
 }
