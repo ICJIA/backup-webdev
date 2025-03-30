@@ -83,15 +83,166 @@ create_backup_report() {
             background-color: #3498db;
             color: white;
         }
+        /* Zebra striping for table rows */
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(odd) {
+            background-color: #ffffff;
+        }
         /* Column width control */
-        th:nth-child(1), td:nth-child(1) { width: 15%; } /* Project */
-        th:nth-child(2), td:nth-child(2) { width: 20%; } /* Source Dir */
-        th:nth-child(3), td:nth-child(3) { width: 35%; } /* Full Path */
-        th:nth-child(4), td:nth-child(4) { width: 10%; } /* Source Size */
-        th:nth-child(5), td:nth-child(5) { width: 10%; } /* Backup Size */
-        th:nth-child(6), td:nth-child(6) { width: 10%; } /* Ratio */
+        th:nth-child(1), td:nth-child(1) { width: 25%; } /* Project */
+        th:nth-child(2), td:nth-child(2) { width: 35%; } /* Source Dir */
+        th:nth-child(3), td:nth-child(3) { width: 15%; } /* Source Size */
+        th:nth-child(4), td:nth-child(4) { width: 15%; } /* Backup Size */
+        th:nth-child(5), td:nth-child(5) { width: 10%; } /* Ratio */
         tr:hover {
+            background-color: #e3f2fd;
+            cursor: pointer;
+        }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 700px;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .modal-title {
+            font-size: 1.5em;
+            color: #2c3e50;
+            margin: 0;
+        }
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #555;
+        }
+        .modal-body {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .detail-item {
+            margin-bottom: 10px;
+        }
+        .detail-label {
+            font-weight: bold;
+            color: #555;
+        }
+        .detail-value {
+            color: #333;
+        }
+        .actions {
+            grid-column: span 2;
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: flex-end;
+        }
+        .button {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .primary-button {
+            background-color: #3498db;
+            color: white;
+        }
+        .secondary-button {
+            background-color: #ecf0f1;
+            color: #333;
+        }
+        
+        /* Tabs styling */
+        .modal-tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            margin-right: 5px;
+            border-radius: 5px 5px 0 0;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            background-color: #f9f9f9;
+            transition: background-color 0.3s;
+        }
+        .tab:hover {
+            background-color: #e3f2fd;
+        }
+        .tab.active {
+            background-color: #3498db;
+            color: white;
+            font-weight: bold;
+        }
+        .tab-content {
+            display: none;
+            padding: 0 10px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* File structure styling */
+        .structure-view {
+            max-height: 400px;
+            overflow-y: auto;
             background-color: #f5f5f5;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+        .file-structure pre {
+            font-family: monospace;
+            white-space: pre;
+            margin: 0;
+            line-height: 1.4;
+            font-size: 13px;
+        }
+        
+        /* Directory grouping styles */
+        tr.directory-header {
+            background-color: #2c3e50 !important;
+            color: white;
+            font-size: 14px;
+        }
+        tr.directory-header td {
+            padding: 8px 15px;
+        }
+        tr.directory-header:hover {
+            background-color: #34495e !important;
+            cursor: default;
         }
     </style>
 </head>
@@ -126,31 +277,276 @@ EOF
     if [ -f "$stats_file" ]; then
         echo "<h2>Project Details</h2>" >> "$report_file"
         echo "<table>" >> "$report_file"
-        echo "<tr><th>Project</th><th>Source Dir</th><th>Full Original Path</th><th>Source Size</th><th>Backup Size</th><th>Ratio</th></tr>" >> "$report_file"
+        echo "<tr><th>Project</th><th>Source Dir</th><th>Source Size</th><th>Backup Size</th><th>Ratio</th></tr>" >> "$report_file"
         
-        while IFS=, read -r project full_project_path src_size archive_size ratio; do
+        # Group projects by source directory
+        # First, read all data into an array and group by source directory
+        declare -A projects_by_dir
+        declare -A dir_order
+        local dir_count=0
+        
+        # First pass - build groups
+        while IFS=, read -r project full_project_path src_size archive_size ratio structure_file rest; do
             # Get the source directory from the full path (parent directory)
             local src_dir=$(dirname "$full_project_path")
             
-            echo "<tr>" >> "$report_file"
-            echo "<td>$project</td>" >> "$report_file"
-            echo "<td>$src_dir</td>" >> "$report_file"
-            echo "<td>$full_project_path</td>" >> "$report_file"
-            echo "<td>$(format_size "$src_size")</td>" >> "$report_file"
-            echo "<td>$(format_size "$archive_size")</td>" >> "$report_file"
-            echo "<td>${ratio}x</td>" >> "$report_file"
-            echo "</tr>" >> "$report_file"
+            # Make sure numeric values are valid
+            # If sizes are missing or invalid, use a default
+            if ! [[ "$src_size" =~ ^[0-9]+$ ]]; then
+                src_size=0
+            fi
+            
+            if ! [[ "$archive_size" =~ ^[0-9]+$ ]]; then
+                archive_size=0
+            fi
+            
+            # Recalculate ratio if needed
+            if ! [[ "$ratio" =~ ^[0-9]*\.?[0-9]+$ ]] || [ "$ratio" = "0" ] || [ -z "$ratio" ]; then
+                if [ "$archive_size" -gt 0 ] && [ "$src_size" -gt 0 ]; then
+                    ratio=$(awk "BEGIN {printf \"%.1f\", ($src_size/$archive_size)}")
+                else
+                    ratio="1.0"
+                fi
+            fi
+            
+            # If this is the first project in this directory, add the directory to the order array
+            if [[ -z "${projects_by_dir[$src_dir]}" ]]; then
+                dir_order[$dir_count]="$src_dir"
+                dir_count=$((dir_count + 1))
+            fi
+            
+            # Add this project's data to the appropriate directory group
+            # We'll use a special delimiter "|||" to separate fields that won't appear in the data
+            projects_by_dir[$src_dir]+="$project|||$full_project_path|||$src_size|||$archive_size|||$ratio|||$structure_file;;;"
         done < "$stats_file"
         
+        # Now iterate through directories in the order they were encountered
+        for ((i=0; i<dir_count; i++)); do
+            local current_dir="${dir_order[$i]}"
+            local projects="${projects_by_dir[$current_dir]}"
+            
+            # Add a header row for this directory
+            echo "<tr class=\"directory-header\">" >> "$report_file"
+            echo "<td colspan=\"5\"><strong>Directory: $current_dir</strong></td>" >> "$report_file"
+            echo "</tr>" >> "$report_file"
+            
+            # Split the projects string and sort alphabetically by project name
+            local IFS=";;;"
+            local sorted_projects=()
+            for project_data in $projects; do
+                if [ -n "$project_data" ]; then
+                    sorted_projects+=("$project_data")
+                fi
+            done
+            
+            # Sort the array by project name (first field before the first delimiter)
+            IFS=$'\n' sorted_projects=($(sort <<<"${sorted_projects[*]}"))
+            
+            # Add the rows for each project in this directory
+            for project_data in "${sorted_projects[@]}"; do
+                # Split the project data back into fields
+                IFS="|||" read -r project full_project_path src_size archive_size ratio structure_file <<< "$project_data"
+                
+                # Add row to table with data attribute for the project
+                echo "<tr data-project=\"$project\">" >> "$report_file"
+                echo "<td>$project</td>" >> "$report_file"
+                echo "<td>$current_dir</td>" >> "$report_file"
+                echo "<td>$(format_size "$src_size")</td>" >> "$report_file"
+                echo "<td>$(format_size "$archive_size")</td>" >> "$report_file"
+                echo "<td>${ratio}x</td>" >> "$report_file"
+                echo "</tr>" >> "$report_file"
+            done
+        done
+        
+        # Close the table
         echo "</table>" >> "$report_file"
+        
+        # Now add the hidden structure container separately
+        echo "<div id='structure-container' style='display:none;'>" >> "$report_file"
+        
+        # Read the file again for structures
+        while IFS=, read -r project full_project_path src_size archive_size ratio structure_file rest; do
+            # Create hidden div with the file structure
+            echo "<div id=\"structure-$project\" class=\"project-structure\">" >> "$report_file"
+            if [ -f "$structure_file" ]; then
+                echo "<pre>" >> "$report_file"
+                cat "$structure_file" >> "$report_file"
+                echo "</pre>" >> "$report_file"
+            else
+                echo "<pre>No structure information available for this project.</pre>" >> "$report_file"
+            fi
+            echo "</div>" >> "$report_file"
+        done < "$stats_file"
+        
+        echo "</div>" >> "$report_file"
     fi
     
-    # Close HTML
+    # Add modal div for project details
     cat >> "$report_file" << EOF
+        <!-- Modal for project details -->
+        <div id="projectModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">Project Details</h3>
+                    <span class="close">&times;</span>
+                </div>
+                
+                <div class="modal-tabs">
+                    <div class="tab active" data-tab="details">Details</div>
+                    <div class="tab" data-tab="structure">File Structure</div>
+                </div>
+                
+                <div id="tab-details" class="tab-content active">
+                    <div class="modal-body">
+                        <div class="detail-item">
+                            <div class="detail-label">Project Name:</div>
+                            <div id="modal-project" class="detail-value"></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Source Directory:</div>
+                            <div id="modal-src-dir" class="detail-value"></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Full Path:</div>
+                            <div id="modal-full-path" class="detail-value"></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Source Size:</div>
+                            <div id="modal-src-size" class="detail-value"></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Backup Size:</div>
+                            <div id="modal-backup-size" class="detail-value"></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Compression Ratio:</div>
+                            <div id="modal-ratio" class="detail-value"></div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Backup Date:</div>
+                            <div id="modal-date" class="detail-value">$(date)</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Files Count (est.):</div>
+                            <div id="modal-files" class="detail-value">--</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="tab-structure" class="tab-content">
+                    <div class="structure-view">
+                        <div id="modal-structure" class="file-structure">
+                            <pre>Loading project structure...</pre>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="actions">
+                    <button class="button secondary-button" onclick="closeModal()">Close</button>
+                    <button class="button primary-button" onclick="alert('Restore feature will be implemented in a future version')">Restore</button>
+                </div>
+            </div>
+        </div>
+
         <footer>
             <p>Generated by WebDev Backup Tool on $(date)</p>
         </footer>
     </div>
+
+    <script>
+        // Get the modal
+        const modal = document.getElementById("projectModal");
+        
+        // Get the <span> element that closes the modal
+        const closeBtn = document.getElementsByClassName("close")[0];
+        
+        // Get tab elements
+        const tabs = document.querySelectorAll(".tab");
+        const tabContents = document.querySelectorAll(".tab-content");
+        
+        // Add click event to tabs
+        tabs.forEach(tab => {
+            tab.addEventListener("click", function() {
+                // Remove active class from all tabs and contents
+                tabs.forEach(t => t.classList.remove("active"));
+                tabContents.forEach(content => content.classList.remove("active"));
+                
+                // Add active class to clicked tab and corresponding content
+                this.classList.add("active");
+                const tabName = this.getAttribute("data-tab");
+                document.getElementById("tab-" + tabName).classList.add("active");
+            });
+        });
+        
+        // Add click event listeners to table rows
+        const rows = document.querySelectorAll("table tr:not(:first-child)");
+        rows.forEach(row => {
+            row.addEventListener("click", function() {
+                const cells = this.cells;
+                const projectName = cells[0].textContent;
+                
+                // Fill the modal with row data
+                document.getElementById("modal-project").textContent = projectName;
+                document.getElementById("modal-src-dir").textContent = cells[1].textContent;
+                document.getElementById("modal-full-path").textContent = cells[2].textContent;
+                document.getElementById("modal-src-size").textContent = cells[3].textContent;
+                document.getElementById("modal-backup-size").textContent = cells[4].textContent;
+                document.getElementById("modal-ratio").textContent = cells[5].textContent;
+                
+                // Estimate files count based on size (just a rough estimate)
+                const sizeText = cells[3].textContent;
+                let filesCount = "N/A";
+                
+                if (sizeText.includes("KB")) {
+                    const sizeKB = parseFloat(sizeText.replace(" KB", ""));
+                    filesCount = Math.round(sizeKB / 10); // Rough estimate: 10KB per file
+                } else if (sizeText.includes("MB")) {
+                    const sizeMB = parseFloat(sizeText.replace(" MB", ""));
+                    filesCount = Math.round(sizeMB * 100); // Rough estimate: 100 files per MB
+                } else if (sizeText.includes("GB")) {
+                    const sizeGB = parseFloat(sizeText.replace(" GB", ""));
+                    filesCount = Math.round(sizeGB * 10000); // Rough estimate: 10,000 files per GB
+                }
+                
+                document.getElementById("modal-files").textContent = 
+                    filesCount !== "N/A" ? filesCount + " (estimated)" : "N/A";
+                
+                // Load the file structure
+                const structureElement = document.getElementById("structure-" + projectName);
+                if (structureElement) {
+                    document.getElementById("modal-structure").innerHTML = structureElement.innerHTML;
+                } else {
+                    document.getElementById("modal-structure").innerHTML = "<pre>No structure information available for this project.</pre>";
+                }
+                
+                // Reset to the details tab when opening
+                tabs.forEach(t => t.classList.remove("active"));
+                tabContents.forEach(content => content.classList.remove("active"));
+                document.querySelector('.tab[data-tab="details"]').classList.add("active");
+                document.getElementById("tab-details").classList.add("active");
+                
+                // Show the modal
+                modal.style.display = "block";
+            });
+        });
+        
+        // Close the modal when clicking on the close button
+        closeBtn.onclick = function() {
+            closeModal();
+        }
+        
+        // Close the modal when clicking outside of it
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+        
+        // Function to close the modal
+        function closeModal() {
+            modal.style.display = "none";
+        }
+    </script>
 </body>
 </html>
 EOF
