@@ -234,7 +234,7 @@ for project_path in "${projects[@]}"; do
         # Add to stats
         echo "$project_name,$project_path,$project_size,$archive_size,$ratio" >> "$STATS_FILE"
         
-        # Generate simple file structure for the project (without depth) - only for smaller projects
+        # Generate focused file structure for the project - only for smaller projects
         # Skip structure generation for large projects
         if [ "$project_size" -lt 100000000 ]; then  # Skip for projects larger than 100MB
             echo "Generating file structure..." | tee -a "$LOG_FILE"
@@ -242,19 +242,93 @@ for project_path in "${projects[@]}"; do
             echo "Structure of $project_name ($project_path):" > "$structure_file"
             echo "----------------------------------------" >> "$structure_file"
             
-            # Use timeout to prevent hanging
-            timeout 5s find "$project_path" -type d -not -path "*/node_modules*" -not -path "*/\.*" -maxdepth 2 2>/dev/null | sort >> "$structure_file"
+            # Create a nicely formatted directory structure that:
+            # - Excludes node_modules, .git, and other non-essential directories
+            # - Focuses on code files and project structure
+            # - Limits depth to keep it manageable
+            # - Uses a tree-like display format for readability
+            
+            {
+                echo "Project root: $project_name/"
+                # Create directory structure tree with find, filtering out noise
+                timeout 5s find "$project_path" -type d -maxdepth 3 \
+                    -not -path "*/node_modules*" \
+                    -not -path "*/\.*" \
+                    -not -path "*/dist*" \
+                    -not -path "*/build*" \
+                    -not -path "*/coverage*" \
+                    -not -path "*/tmp*" \
+                    -not -path "*/temp*" \
+                    -not -path "*/logs*" \
+                    -not -path "*/public/vendor*" \
+                    -not -path "*/vendor*" \
+                    -not -path "*/cache*" 2>/dev/null | sort | while read -r dir; do
+                    if [ "$dir" = "$project_path" ]; then 
+                        continue; # Skip the root project directory
+                    fi
+                    
+                    # Get the relative path and calculate depth
+                    rel_path="${dir#$project_path/}"
+                    depth=$(echo "$rel_path" | tr -cd '/' | wc -c)
+                    indent=""
+                    
+                    # Create nice indentation
+                    for ((i=0; i<depth; i++)); do
+                        indent="$indent  "
+                    done
+                    
+                    # Print directory with trailing slash
+                    echo "$indent├── $(basename "$dir")/"
+                done
+                
+                # List key files in root directory to give flavor of the project
+                echo -e "\nKey files in root:"
+                timeout 3s find "$project_path" -maxdepth 1 -type f \
+                    -not -path "*/\.*" \
+                    -name "*.json" -o -name "*.js" -o -name "*.html" -o -name "*.py" \
+                    -o -name "*.md" -o -name "Makefile" -o -name "Dockerfile" \
+                    -o -name "README*" -o -name "package.json" -o -name "composer.json" \
+                    -o -name "*.toml" -o -name "*.yaml" -o -name "*.yml" \
+                    -o -name "*.tsx" -o -name "*.ts" 2>/dev/null | sort | while read -r file; do
+                    echo "  ├── $(basename "$file")"
+                done
+                
+                echo -e "\nStructure is simplified for clarity (some files/dirs omitted)"
+            } >> "$structure_file"
             
             if [ $? -ne 0 ]; then
                 echo "Structure generation timed out, creating minimal structure" | tee -a "$LOG_FILE"
                 echo "Project is too large for detailed structure" >> "$structure_file"
             fi
         else
-            echo "Skipping structure generation for large project" | tee -a "$LOG_FILE"
+            echo "Skipping detailed structure generation for large project" | tee -a "$LOG_FILE"
             structure_file="$FULL_BACKUP_PATH/${project_name}_structure.txt"
             echo "Structure of $project_name ($project_path):" > "$structure_file"
             echo "----------------------------------------" >> "$structure_file"
-            echo "Project is too large for detailed structure" >> "$structure_file"
+            
+            # For large projects, just show top-level directories
+            {
+                echo "Project root: $project_name/"
+                echo "Top-level directories:"
+                timeout 3s find "$project_path" -maxdepth 1 -type d \
+                    -not -path "$project_path" \
+                    -not -path "*/node_modules*" \
+                    -not -path "*/\.*" \
+                    -not -path "*/dist*" \
+                    -not -path "*/build*" 2>/dev/null | sort | while read -r dir; do
+                    echo "  ├── $(basename "$dir")/"
+                done
+                
+                echo -e "\nKey files in root:"
+                timeout 2s find "$project_path" -maxdepth 1 -type f \
+                    -not -path "*/\.*" \
+                    -name "*.json" -o -name "README*" -o -name "Makefile" \
+                    -o -name "package.json" -o -name "composer.json" 2>/dev/null | sort | while read -r file; do
+                    echo "  ├── $(basename "$file")"
+                done
+                
+                echo -e "\nNote: This is a simplified structure for a large project"
+            } >> "$structure_file"
         fi
         
         successful=$((successful + 1))
