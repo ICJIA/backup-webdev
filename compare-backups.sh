@@ -116,7 +116,14 @@ find_latest_backup() {
         return 1
     fi
     
-    find "$backup_dir" -maxdepth 1 -type d -name "wsl2_backup_*" -printf "%T@ %p\n" | \
+    # Cross-platform find (supports both old wsl2_backup_* and new webdev_backup_* naming)
+    if [ "$(uname -s)" = "Darwin" ]; then
+        # macOS: Use find + stat instead of -printf
+        find "$backup_dir" -maxdepth 1 -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -exec stat -f "%m %N" {} \; | \
+    else
+        # Linux: Use GNU find -printf
+        find "$backup_dir" -maxdepth 1 -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -printf "%T@ %p\n" | \
+    fi
         sort -nr | head -1 | cut -d' ' -f2-
 }
 

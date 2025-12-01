@@ -119,7 +119,12 @@ done
 
 # Check secrets.sh permissions if it exists
 if [ -f "$SCRIPT_DIR/secrets.sh" ]; then
-    PERMS=$(stat -c "%a" "$SCRIPT_DIR/secrets.sh")
+    # Cross-platform permission check
+    if [ "$(uname -s)" = "Darwin" ]; then
+        PERMS=$(stat -f %OLp "$SCRIPT_DIR/secrets.sh" 2>/dev/null)
+    else
+        PERMS=$(stat -c "%a" "$SCRIPT_DIR/secrets.sh" 2>/dev/null)
+    fi
     if [ "$PERMS" != "600" ]; then
         echo -e "${YELLOW}Warning: secrets.sh has incorrect permissions: $PERMS${NC}"
         echo -e "${YELLOW}Fixing permissions...${NC}"

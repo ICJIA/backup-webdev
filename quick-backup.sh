@@ -18,7 +18,8 @@ NC='\033[0m' # No Color
 BACKUP_DIR="${DEFAULT_BACKUP_DIR:-$SCRIPT_DIR/backups}"
 SOURCE_DIRS=("${DEFAULT_SOURCE_DIRS[@]}")
 DATE=$(date '+%Y-%m-%d_%H-%M-%S')
-BACKUP_NAME="wsl2_backup_$DATE"
+# Use BACKUP_PREFIX from config.sh for OS-agnostic naming
+BACKUP_NAME="${BACKUP_PREFIX}_$DATE"
 FULL_BACKUP_PATH="$BACKUP_DIR/$BACKUP_NAME"
 
 echo -e "${CYAN}===== WebDev Quick Backup =====${NC}"
@@ -147,7 +148,14 @@ for project_path in "${projects[@]}"; do
     # Get source size (excluding node_modules) - with a timeout
     src_dir=$(dirname "$project_path")
     echo "Calculating size of $project_name..." | tee -a "$LOG_FILE"
-    project_size=$(timeout 10s du -sb --exclude="node_modules" "$project_path" 2>/dev/null | cut -f1)
+    # Cross-platform directory size calculation
+    if [ "$(uname -s)" = "Darwin" ]; then
+        # macOS: Use find to exclude node_modules, then sum with awk
+        project_size=$(timeout 10s sh -c "find \"$project_path\" -type f ! -path \"*/node_modules/*\" -exec du -k {} + 2>/dev/null | awk '{sum += \$1} END {print sum * 1024}'" 2>/dev/null || echo "0")
+    else
+        # Linux: Use du with --exclude
+        project_size=$(timeout 10s du -sb --exclude="node_modules" "$project_path" 2>/dev/null | cut -f1)
+    fi
     
     # If size calculation times out or fails, use a default value
     if [ -z "$project_size" ]; then

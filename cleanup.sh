@@ -145,25 +145,25 @@ TEST_DIR_COUNT=$(find "$TEST_DIR" -type d -name "webdev_test_*" 2>/dev/null | wc
 
 echo -e " - Backup logs: $BACKUP_LOG_COUNT file(s)"
 if [ $BACKUP_LOG_COUNT -gt 0 ] && [ $BACKUP_LOG_COUNT -le 10 ]; then
-    find "$LOGS_DIR" -type f -not -name '.gitkeep' -printf "   - %f\n" 2>/dev/null | sort
+    find "$LOGS_DIR" -type f -not -name '.gitkeep' 2>/dev/null | while read -r file; do echo "   - $(basename "$file")"; done | sort
 elif [ $BACKUP_LOG_COUNT -gt 10 ]; then
-    find "$LOGS_DIR" -type f -not -name '.gitkeep' -printf "   - %f\n" 2>/dev/null | sort | head -5
+    find "$LOGS_DIR" -type f -not -name '.gitkeep' 2>/dev/null | while read -r file; do echo "   - $(basename "$file")"; done | sort | head -5
     echo "   - ... and $(($BACKUP_LOG_COUNT - 5)) more backup log files"
 fi
 
 echo -e " - Test logs: $TEST_LOG_COUNT file(s)"
 if [ $TEST_LOG_COUNT -gt 0 ] && [ $TEST_LOG_COUNT -le 10 ]; then
-    find "$TEST_DIR" -type f -name "*.log" -printf "   - %f\n" 2>/dev/null | sort
+    find "$TEST_DIR" -type f -name "*.log" 2>/dev/null | while read -r file; do echo "   - $(basename "$file")"; done | sort
 elif [ $TEST_LOG_COUNT -gt 10 ]; then
-    find "$TEST_DIR" -type f -name "*.log" -printf "   - %f\n" 2>/dev/null | sort | head -5
+    find "$TEST_DIR" -type f -name "*.log" 2>/dev/null | while read -r file; do echo "   - $(basename "$file")"; done | sort | head -5
     echo "   - ... and $(($TEST_LOG_COUNT - 5)) more test log files"
 fi
 
 echo -e " - Test directories: $TEST_DIR_COUNT directory/directories"
 if [ $TEST_DIR_COUNT -gt 0 ] && [ $TEST_DIR_COUNT -le 5 ]; then
-    find "$TEST_DIR" -type d -name "webdev_test_*" -printf "   - %f\n" 2>/dev/null | sort
+    find "$TEST_DIR" -type d -name "webdev_test_*" 2>/dev/null | while read -r dir; do echo "   - $(basename "$dir")"; done | sort
 elif [ $TEST_DIR_COUNT -gt 5 ]; then
-    find "$TEST_DIR" -type d -name "webdev_test_*" -printf "   - %f\n" 2>/dev/null | sort | head -3
+    find "$TEST_DIR" -type d -name "webdev_test_*" 2>/dev/null | while read -r dir; do echo "   - $(basename "$dir")"; done | sort | head -3
     echo "   - ... and $(($TEST_DIR_COUNT - 3)) more test directories"
 fi
 
@@ -439,7 +439,12 @@ else
         
         if [ "$TEST_RUN_COUNT" -gt 5 ]; then
             # Get list of files sorted by date, skip first 5
-            OLD_TEST_LOGS=$(find "$TEST_DIR" -name "test_run_*.log" -type f -printf "%T@ %p\n" | sort -n | head -n -5 | cut -d' ' -f2-)
+            # Cross-platform find for old test logs
+            if [ "$(uname -s)" = "Darwin" ]; then
+                OLD_TEST_LOGS=$(find "$TEST_DIR" -name "test_run_*.log" -type f -exec stat -f "%m %N" {} \; | sort -n | head -n -5 | cut -d' ' -f2-)
+            else
+                OLD_TEST_LOGS=$(find "$TEST_DIR" -name "test_run_*.log" -type f -printf "%T@ %p\n" | sort -n | head -n -5 | cut -d' ' -f2-)
+            fi
             
             echo "Found $(echo "$OLD_TEST_LOGS" | wc -l) old test run logs to clean up..."
             
@@ -498,8 +503,8 @@ elif [ "$CLEAR_BACKUPS" = true ]; then
     # Handle clear backups option - only for default backup directory
     echo -e "${YELLOW}WARNING: You've requested to clear all backup folders in: $BACKUP_DIR${NC}"
     
-    # Get the count of backup folders
-    BACKUP_FOLDERS_COUNT=$(find "$BACKUP_DIR" -type d -name "wsl2_backup_*" | wc -l)
+    # Get the count of backup folders (supports both old wsl2_backup_* and new webdev_backup_* naming)
+    BACKUP_FOLDERS_COUNT=$(find "$BACKUP_DIR" -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) | wc -l)
     
     if [ "$BACKUP_FOLDERS_COUNT" -gt 0 ]; then
         echo -e "Found ${YELLOW}$BACKUP_FOLDERS_COUNT${NC} backup folders that would be removed."
@@ -509,13 +514,15 @@ elif [ "$CLEAR_BACKUPS" = true ]; then
             if confirm "Are you sure you want to delete ALL backup folders? This cannot be undone!" "n"; then
                 echo "Processing backup folders deletion..."
                 
-                # Find all backup folders
-                BACKUP_FOLDERS=$(find "$BACKUP_DIR" -type d -name "wsl2_backup_*")
+                # Find all backup folders (supports both naming conventions)
+                BACKUP_FOLDERS=$(find "$BACKUP_DIR" -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \))
                 
                 # Process each backup folder with confirmation
                 for folder in $BACKUP_FOLDERS; do
                     folder_name=$(basename "$folder")
-                    folder_date=$(echo "$folder_name" | sed 's/wsl2_backup_//')
+                    # Extract date from backup name (supports both naming conventions)
+                    folder_date=${folder_name#webdev_backup_}
+                    folder_date=${folder_date#wsl2_backup_}
                     
                     # Default to "no" for individual confirmations as well
                     if confirm "Delete backup folder from $folder_date?" "n"; then
@@ -540,18 +547,26 @@ elif [ "$CLEAR_BACKUPS" = true ]; then
 elif [ -d "$BACKUP_DIR" ]; then
     if [ "$DRY_RUN" = false ]; then
         # Count backups
-        BACKUP_COUNT=$(find "$BACKUP_DIR" -type d -name "wsl2_backup_*" | wc -l)
+        # Count backups (supports both old wsl2_backup_* and new webdev_backup_* naming)
+        BACKUP_COUNT=$(find "$BACKUP_DIR" -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) | wc -l)
         
         if [ "$BACKUP_COUNT" -gt 5 ]; then
             # Keep only the 5 most recent backups
-            OLD_BACKUPS=$(find "$BACKUP_DIR" -type d -name "wsl2_backup_*" -printf "%T@ %p\n" | sort -n | head -n -5 | cut -d' ' -f2-)
+            # Cross-platform find for old backups (supports both old wsl2_backup_* and new webdev_backup_* naming)
+            if [ "$(uname -s)" = "Darwin" ]; then
+                OLD_BACKUPS=$(find "$BACKUP_DIR" -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -exec stat -f "%m %N" {} \; | sort -n | head -n -5 | cut -d' ' -f2-)
+            else
+                OLD_BACKUPS=$(find "$BACKUP_DIR" -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -printf "%T@ %p\n" | sort -n | head -n -5 | cut -d' ' -f2-)
+            fi
             
             echo "Found $(echo "$OLD_BACKUPS" | wc -w) old backup directories to clean up (keeping 5 most recent)..."
             
             # Remove old backup directories with confirmation
             for dir in $OLD_BACKUPS; do
                 dir_name=$(basename "$dir")
-                dir_date=$(echo "$dir_name" | sed 's/wsl2_backup_//')
+                # Extract date from backup name (supports both naming conventions)
+                dir_date=${dir_name#webdev_backup_}
+                dir_date=${dir_date#wsl2_backup_}
                 if confirm "Delete old backup from $dir_date?" "y"; then
                     run_cmd "rm -rf \"$dir\""
                     echo -e "${GREEN}  ✓ Deleted: $dir_name${NC}"

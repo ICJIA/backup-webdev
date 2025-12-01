@@ -161,7 +161,12 @@ fi
 # Check secrets file
 echo -e "\n${YELLOW}Credentials:${NC}"
 if [ -f "$SCRIPT_DIR/secrets.sh" ]; then
-    PERMS=$(stat -c "%a" "$SCRIPT_DIR/secrets.sh")
+    # Cross-platform permission check
+    if [ "$(uname -s)" = "Darwin" ]; then
+        PERMS=$(stat -f %OLp "$SCRIPT_DIR/secrets.sh" 2>/dev/null)
+    else
+        PERMS=$(stat -c "%a" "$SCRIPT_DIR/secrets.sh" 2>/dev/null)
+    fi
     if [ "$PERMS" = "600" ]; then
         echo -e "${GREEN}✓ secrets.sh exists with correct permissions (600)${NC}"
     else

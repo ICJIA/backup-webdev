@@ -139,12 +139,14 @@ EOF
 if [ "$CLEAN_ALL" = true ]; then
     # Process all backup directories
     echo -e "${CYAN}Processing all backup directories in: $BACKUP_DIR${NC}"
-    find "$BACKUP_DIR" -maxdepth 1 -type d -name "wsl2_backup_*" | while read -r dir; do
+    # Find backup directories (supports both old wsl2_backup_* and new webdev_backup_* naming)
+    find "$BACKUP_DIR" -maxdepth 1 -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) | while read -r dir; do
         organize_backup_dir "$dir" "$DRY_RUN"
     done
 else
     # Find and process only the latest backup directory
-    latest_backup_dir=$(find "$BACKUP_DIR" -maxdepth 1 -type d -name "wsl2_backup_*" | sort -r | head -1)
+    # Find latest backup directory (supports both old wsl2_backup_* and new webdev_backup_* naming)
+    latest_backup_dir=$(find "$BACKUP_DIR" -maxdepth 1 -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) | sort -r | head -1)
     
     if [ -z "$latest_backup_dir" ]; then
         echo -e "${RED}Error: No backup directories found in $BACKUP_DIR${NC}"

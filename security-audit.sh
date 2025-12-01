@@ -47,7 +47,12 @@ done
 
 # Check secrets file
 if [ -f "$SCRIPT_DIR/secrets.sh" ]; then
-    current_perms=$(stat -c "%a" "$SCRIPT_DIR/secrets.sh")
+    # Cross-platform permission check
+    if [ "$(uname -s)" = "Darwin" ]; then
+        current_perms=$(stat -f %OLp "$SCRIPT_DIR/secrets.sh" 2>/dev/null)
+    else
+        current_perms=$(stat -c "%a" "$SCRIPT_DIR/secrets.sh" 2>/dev/null)
+    fi
     if [ "$current_perms" != "600" ]; then
         report_issue "HIGH" "Secrets file has incorrect permissions: $current_perms" \
                      "Run secure-permissions.sh to fix permissions (chmod 600 for secrets.sh)"

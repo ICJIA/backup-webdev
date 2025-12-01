@@ -260,15 +260,24 @@ list_backup_contents() {
     fi
 }
 
-# Get size of a directory (excluding specific patterns)
+# Get size of a directory (excluding specific patterns) - cross-platform
 get_directory_size() {
     local dir_path=$1
     local exclude_pattern=${2:-"node_modules"}
     
-    if [ -d "$dir_path" ]; then
-        du -sb --exclude="$exclude_pattern" "$dir_path" 2>/dev/null | cut -f1
-    else
+    if [ ! -d "$dir_path" ]; then
         echo "0"
+        return
+    fi
+    
+    # macOS du doesn't support --exclude, so use find + du
+    if [ "$(uname -s)" = "Darwin" ]; then
+        # macOS: Use find to exclude patterns, then sum with awk
+        find "$dir_path" -type f ! -path "*/$exclude_pattern/*" -exec du -k {} + 2>/dev/null | \
+            awk '{sum += $1} END {print sum * 1024}'
+    else
+        # Linux: Use du with --exclude (GNU du)
+        du -sb --exclude="$exclude_pattern" "$dir_path" 2>/dev/null | cut -f1
     fi
 }
 
@@ -290,7 +299,7 @@ find_projects() {
          | sort
 }
 
-# Find the most recent backup for a project
+# Find the most recent backup for a project (cross-platform)
 find_latest_backup() {
     local backup_dir=$1
     local project=${2:-}
@@ -301,14 +310,30 @@ find_latest_backup() {
     
     if [ -n "$project" ]; then
         # Look for specific project backups
-        find "$backup_dir" -type f -name "${project}_*.tar.gz" -printf "%T@ %p\n" | sort -nr | head -1 | cut -d' ' -f2-
+        if [ "$(uname -s)" = "Darwin" ]; then
+            # macOS: Use find + stat instead of -printf
+            find "$backup_dir" -type f -name "${project}_*.tar.gz" -exec stat -f "%m %N" {} \; | \
+                sort -rn | head -1 | cut -d' ' -f2-
+        else
+            # Linux: Use GNU find -printf
+            find "$backup_dir" -type f -name "${project}_*.tar.gz" -printf "%T@ %p\n" | \
+                sort -nr | head -1 | cut -d' ' -f2-
+        fi
     else
-        # Look for any backup
-        find "$backup_dir" -type d -name "wsl2_backup_*" -printf "%T@ %p\n" | sort -nr | head -1 | cut -d' ' -f2-
+        # Look for any backup (supports both old wsl2_backup_* and new webdev_backup_* naming)
+        if [ "$(uname -s)" = "Darwin" ]; then
+            # macOS: Use find + stat instead of -printf
+            find "$backup_dir" -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -exec stat -f "%m %N" {} \; | \
+                sort -rn | head -1 | cut -d' ' -f2-
+        else
+            # Linux: Use GNU find -printf
+            find "$backup_dir" -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -printf "%T@ %p\n" | \
+                sort -nr | head -1 | cut -d' ' -f2-
+        fi
     fi
 }
 
-# List all backups
+# List all backups (cross-platform)
 list_all_backups() {
     local backup_dir=$1
     local project=${2:-}
@@ -319,10 +344,26 @@ list_all_backups() {
     
     if [ -n "$project" ]; then
         # List specific project backups
-        find "$backup_dir" -type f -name "${project}_*.tar.gz" -printf "%T@ %p\n" | sort -nr | cut -d' ' -f2-
+        if [ "$(uname -s)" = "Darwin" ]; then
+            # macOS: Use find + stat instead of -printf
+            find "$backup_dir" -type f -name "${project}_*.tar.gz" -exec stat -f "%m %N" {} \; | \
+                sort -rn | cut -d' ' -f2-
+        else
+            # Linux: Use GNU find -printf
+            find "$backup_dir" -type f -name "${project}_*.tar.gz" -printf "%T@ %p\n" | \
+                sort -nr | cut -d' ' -f2-
+        fi
     else
-        # List all backup directories
-        find "$backup_dir" -type d -name "wsl2_backup_*" -printf "%T@ %p\n" | sort -nr | cut -d' ' -f2-
+        # List all backup directories (supports both old wsl2_backup_* and new webdev_backup_* naming)
+        if [ "$(uname -s)" = "Darwin" ]; then
+            # macOS: Use find + stat instead of -printf
+            find "$backup_dir" -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -exec stat -f "%m %N" {} \; | \
+                sort -rn | cut -d' ' -f2-
+        else
+            # Linux: Use GNU find -printf
+            find "$backup_dir" -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -printf "%T@ %p\n" | \
+                sort -nr | cut -d' ' -f2-
+        fi
     fi
 }
 

@@ -95,7 +95,12 @@ else
     fi
     
     # Set proper permissions
-    current_perms=$(stat -c "%a" "$SECRETS_FILE" 2>/dev/null || echo "unknown")
+    # Cross-platform permission check
+    if [ "$(uname -s)" = "Darwin" ]; then
+        current_perms=$(stat -f %OLp "$SECRETS_FILE" 2>/dev/null || echo "unknown")
+    else
+        current_perms=$(stat -c "%a" "$SECRETS_FILE" 2>/dev/null || echo "unknown")
+    fi
     if [ "$current_perms" != "600" ]; then
         echo -e "${YELLOW}WARNING: secrets.sh has incorrect permissions: $current_perms${NC}"
         echo -e "${YELLOW}Securing file with correct permissions (600)${NC}"

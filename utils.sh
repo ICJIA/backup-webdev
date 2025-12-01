@@ -38,6 +38,42 @@ if [ -f "$SCRIPT_DIR/secrets.sh" ]; then
     source "$SCRIPT_DIR/secrets.sh"
 fi
 
+# OS Detection - Cross-platform compatibility
+detect_os() {
+    case "$(uname -s)" in
+        Darwin*)
+            echo "macOS"
+            ;;
+        Linux*)
+            echo "Linux"
+            ;;
+        MINGW*|MSYS*|CYGWIN*)
+            echo "Windows"
+            ;;
+        *)
+            echo "Unknown"
+            ;;
+    esac
+}
+
+# Get OS type for compatibility checks
+OS_TYPE=$(detect_os)
+IS_MACOS=false
+IS_LINUX=false
+IS_WINDOWS=false
+
+case "$OS_TYPE" in
+    macOS)
+        IS_MACOS=true
+        ;;
+    Linux)
+        IS_LINUX=true
+        ;;
+    Windows)
+        IS_WINDOWS=true
+        ;;
+esac
+
 # Terminal colors for better output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -626,14 +662,17 @@ format_time() {
     fi
 }
 
-# Get file modification time as Unix timestamp
+# Get file modification time as Unix timestamp (cross-platform)
 get_file_mtime() {
     local file_path=$1
-    stat -c %Y "$file_path" 2>/dev/null || \
-    stat -f %m "$file_path" 2>/dev/null
+    if [ "$IS_MACOS" = true ]; then
+        stat -f %m "$file_path" 2>/dev/null
+    else
+        stat -c %Y "$file_path" 2>/dev/null
+    fi
 }
 
-# Compare two files to see if they're different
+# Compare two files to see if they're different (cross-platform)
 files_differ() {
     local file1=$1
     local file2=$2
@@ -643,9 +682,16 @@ files_differ() {
         return 0  # true, they differ
     fi
     
-    # Check size first (quick comparison)
-    local size1=$(stat -c %s "$file1" 2>/dev/null || stat -f %z "$file1" 2>/dev/null)
-    local size2=$(stat -c %s "$file2" 2>/dev/null || stat -f %z "$file2" 2>/dev/null)
+    # Check size first (quick comparison) - cross-platform
+    local size1
+    local size2
+    if [ "$IS_MACOS" = true ]; then
+        size1=$(stat -f %z "$file1" 2>/dev/null)
+        size2=$(stat -f %z "$file2" 2>/dev/null)
+    else
+        size1=$(stat -c %s "$file1" 2>/dev/null)
+        size2=$(stat -c %s "$file2" 2>/dev/null)
+    fi
     
     if [[ "$size1" != "$size2" ]]; then
         return 0  # true, they differ
@@ -654,6 +700,16 @@ files_differ() {
     # Compare content
     cmp -s "$file1" "$file2"
     return $?  # 0 if same, 1 if different
+}
+
+# Get file permissions in octal format (cross-platform)
+get_file_permissions() {
+    local file_path=$1
+    if [ "$IS_MACOS" = true ]; then
+        stat -f %OLp "$file_path" 2>/dev/null
+    else
+        stat -c %a "$file_path" 2>/dev/null
+    fi
 }
 
 # SECURITY IMPROVEMENT: Secure way to check required tools

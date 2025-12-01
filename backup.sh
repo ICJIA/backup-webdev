@@ -210,10 +210,11 @@ fi
 
 # Set dependent paths (will be updated after verification prompt if needed)
 # Add VERIFIED suffix to backup name if verification is enabled
+# Use BACKUP_PREFIX from config.sh for OS-agnostic naming
 if [ "$VERIFY_BACKUP" = true ]; then
-    BACKUP_NAME="wsl2_backup_VERIFIED_$DATE"
+    BACKUP_NAME="${BACKUP_PREFIX}_VERIFIED_$DATE"
 else
-    BACKUP_NAME="wsl2_backup_$DATE"
+    BACKUP_NAME="${BACKUP_PREFIX}_$DATE"
 fi
 FULL_BACKUP_PATH="$BACKUP_DIR/$BACKUP_NAME"
 LOG_FILE="$FULL_BACKUP_PATH/backup_log.log"
@@ -406,10 +407,11 @@ if [ "$SILENT_MODE" = false ]; then
     echo ""
     
     # Update backup name if verification status changed
+    # Use BACKUP_PREFIX from config.sh for OS-agnostic naming
     if [ "$VERIFY_BACKUP" = true ]; then
-        BACKUP_NAME="wsl2_backup_VERIFIED_$DATE"
+        BACKUP_NAME="${BACKUP_PREFIX}_VERIFIED_$DATE"
     else
-        BACKUP_NAME="wsl2_backup_$DATE"
+        BACKUP_NAME="${BACKUP_PREFIX}_$DATE"
     fi
     FULL_BACKUP_PATH="$BACKUP_DIR/$BACKUP_NAME"
     LOG_FILE="$FULL_BACKUP_PATH/backup_log.log"
