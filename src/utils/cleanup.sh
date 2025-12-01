@@ -499,7 +499,7 @@ elif [ "$CLEAR_BACKUPS" = true ]; then
     echo -e "${YELLOW}WARNING: You've requested to clear all backup folders in: $BACKUP_DIR${NC}"
     
     # Get the count of backup folders
-    BACKUP_FOLDERS_COUNT=$(find "$BACKUP_DIR" -type d -name "webdev_backup_*" | wc -l)
+    BACKUP_FOLDERS_COUNT=$(find "$BACKUP_DIR" -type d -name "wsl2_backup_*" | wc -l)
     
     if [ "$BACKUP_FOLDERS_COUNT" -gt 0 ]; then
         echo -e "Found ${YELLOW}$BACKUP_FOLDERS_COUNT${NC} backup folders that would be removed."
@@ -510,12 +510,12 @@ elif [ "$CLEAR_BACKUPS" = true ]; then
                 echo "Processing backup folders deletion..."
                 
                 # Find all backup folders
-                BACKUP_FOLDERS=$(find "$BACKUP_DIR" -type d -name "webdev_backup_*")
+                BACKUP_FOLDERS=$(find "$BACKUP_DIR" -type d -name "wsl2_backup_*")
                 
                 # Process each backup folder with confirmation
                 for folder in $BACKUP_FOLDERS; do
                     folder_name=$(basename "$folder")
-                    folder_date=$(echo "$folder_name" | sed 's/webdev_backup_//')
+                    folder_date=$(echo "$folder_name" | sed 's/wsl2_backup_//')
                     
                     # Default to "no" for individual confirmations as well
                     if confirm "Delete backup folder from $folder_date?" "n"; then
@@ -540,18 +540,18 @@ elif [ "$CLEAR_BACKUPS" = true ]; then
 elif [ -d "$BACKUP_DIR" ]; then
     if [ "$DRY_RUN" = false ]; then
         # Count backups
-        BACKUP_COUNT=$(find "$BACKUP_DIR" -type d -name "webdev_backup_*" | wc -l)
+        BACKUP_COUNT=$(find "$BACKUP_DIR" -type d -name "wsl2_backup_*" | wc -l)
         
         if [ "$BACKUP_COUNT" -gt 5 ]; then
             # Keep only the 5 most recent backups
-            OLD_BACKUPS=$(find "$BACKUP_DIR" -type d -name "webdev_backup_*" -printf "%T@ %p\n" | sort -n | head -n -5 | cut -d' ' -f2-)
+            OLD_BACKUPS=$(find "$BACKUP_DIR" -type d -name "wsl2_backup_*" -printf "%T@ %p\n" | sort -n | head -n -5 | cut -d' ' -f2-)
             
             echo "Found $(echo "$OLD_BACKUPS" | wc -w) old backup directories to clean up (keeping 5 most recent)..."
             
             # Remove old backup directories with confirmation
             for dir in $OLD_BACKUPS; do
                 dir_name=$(basename "$dir")
-                dir_date=$(echo "$dir_name" | sed 's/webdev_backup_//')
+                dir_date=$(echo "$dir_name" | sed 's/wsl2_backup_//')
                 if confirm "Delete old backup from $dir_date?" "y"; then
                     run_cmd "rm -rf \"$dir\""
                     echo -e "${GREEN}  ✓ Deleted: $dir_name${NC}"

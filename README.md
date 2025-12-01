@@ -105,7 +105,7 @@ Back up a specific directory:
 Back up multiple source directories:
 
 ```bash
-./backup.sh --sources ~/webdev,~/inform6 --verify
+./backup.sh --sources ~/webdev,~/projects --verify
 ```
 
 ### Differential Backups

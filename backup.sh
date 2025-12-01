@@ -14,7 +14,7 @@ source "$SCRIPT_DIR/reporting.sh"
 SILENT_MODE=false
 INCREMENTAL_BACKUP=false
 DIFFERENTIAL_BACKUP=false
-VERIFY_BACKUP=false
+VERIFY_BACKUP=false  # Verification disabled by default for faster backups
 THOROUGH_VERIFY=false
 COMPRESSION_LEVEL=6
 EMAIL_NOTIFICATION=""
@@ -51,6 +51,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --verify)
             VERIFY_BACKUP=true
+            shift
+            ;;
+        --no-verify)
+            VERIFY_BACKUP=false
             shift
             ;;
         --thorough-verify)
@@ -115,7 +119,8 @@ while [[ $# -gt 0 ]]; do
             ;;
         --destination|--dest|-d)
             if [[ -n "$2" && "$2" != --* ]]; then
-                CUSTOM_BACKUP_DIR="$2"
+                # Expand tilde in path
+                CUSTOM_BACKUP_DIR="${2/#\~/$HOME}"
                 shift 2
             else
                 echo -e "${RED}Error: Destination argument requires a directory path${NC}"
@@ -126,6 +131,9 @@ while [[ $# -gt 0 ]]; do
             if [[ -n "$2" ]]; then
                 IFS=',' read -ra custom_dirs <<< "$2"
                 for dir in "${custom_dirs[@]}"; do
+                    # Trim whitespace and expand tilde
+                    dir=$(echo "$dir" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                    dir="${dir/#\~/$HOME}"
                     CUSTOM_SOURCE_DIRS+=("$dir")
                 done
                 shift 2
@@ -136,7 +144,9 @@ while [[ $# -gt 0 ]]; do
             ;;
         --source|-s)
             if [[ -n "$2" && "$2" != --* ]]; then
-                CUSTOM_SOURCE_DIRS+=("$2")
+                # Expand tilde in path
+                dir="${2/#\~/$HOME}"
+                CUSTOM_SOURCE_DIRS+=("$dir")
                 shift 2
             else
                 echo -e "${RED}Error: Source argument requires a directory path${NC}"
@@ -157,7 +167,11 @@ done
 # Set source directories (use custom if provided, otherwise default)
 SOURCE_DIRS=()
 if [ ${#CUSTOM_SOURCE_DIRS[@]} -gt 0 ]; then
-    SOURCE_DIRS=("${CUSTOM_SOURCE_DIRS[@]}")
+    # Expand tilde in custom source directories if not already expanded
+    for dir in "${CUSTOM_SOURCE_DIRS[@]}"; do
+        dir="${dir/#\~/$HOME}"
+        SOURCE_DIRS+=("$dir")
+    done
 else
     SOURCE_DIRS=("${DEFAULT_SOURCE_DIRS[@]}")
 fi
@@ -174,6 +188,11 @@ for dir in "${SOURCE_DIRS[@]}"; do
     fi
 done
 
+# Set backup directory (use custom if provided, otherwise default from config.sh)
+if [ -n "$CUSTOM_BACKUP_DIR" ]; then
+    BACKUP_DIR="$CUSTOM_BACKUP_DIR"
+fi
+
 # Verify backup directory and create if needed
 if ! verify_directory "$BACKUP_DIR" "Backup destination" true; then
     echo "No files were backed up. Please check directory permissions."
@@ -189,28 +208,17 @@ else
     BACKUP_TYPE="full"
 fi
 
-# Set dependent paths
-BACKUP_NAME="webdev_backup_$DATE"
+# Set dependent paths (will be updated after verification prompt if needed)
+# Add VERIFIED suffix to backup name if verification is enabled
+if [ "$VERIFY_BACKUP" = true ]; then
+    BACKUP_NAME="wsl2_backup_VERIFIED_$DATE"
+else
+    BACKUP_NAME="wsl2_backup_$DATE"
+fi
 FULL_BACKUP_PATH="$BACKUP_DIR/$BACKUP_NAME"
 LOG_FILE="$FULL_BACKUP_PATH/backup_log.log"
 STATS_FILE="$FULL_BACKUP_PATH/backup_stats.txt"
 METADATA_FILE="$FULL_BACKUP_PATH/backup_metadata.json"
-
-# Create backup directory
-if ! mkdir -p "$FULL_BACKUP_PATH"; then
-    echo -e "${RED}ERROR: Failed to create backup directory: $FULL_BACKUP_PATH${NC}"
-    echo "No files were backed up. Please check directory permissions."
-    exit 1
-fi
-
-# Create necessary files
-for file in "$LOG_FILE" "$STATS_FILE" "$METADATA_FILE"; do
-    if ! touch "$file"; then
-        echo -e "${RED}ERROR: Failed to create file: $file${NC}"
-        echo "No files were backed up. The filesystem may be read-only or full."
-        exit 1
-    fi
-done
 
 # Record start time
 START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
@@ -259,7 +267,8 @@ for dir in "${SOURCE_DIRS[@]}"; do
     # Improve robustness for Quick Backup by setting a timeout
     if [[ "$*" == *"--quick"* ]]; then
         # For --quick, use a timeout to prevent hanging
-        dir_project_output=$(timeout 30s find "$dir" -maxdepth 1 -mindepth 1 -type d -not -path "*/\.*" -not -path "*/node_modules*" | sort)
+        # Always include .ssh directory even though it's hidden
+        dir_project_output=$(timeout 30s find "$dir" -maxdepth 1 -mindepth 1 -type d \( -name ".ssh" -o -not -path "*/\.*" \) -not -path "*/node_modules*" | sort)
         if [ -n "$dir_project_output" ]; then
             mapfile -t dir_projects <<< "$dir_project_output"
             log "Found ${#dir_projects[@]} projects in $dir" "$LOG_FILE" "$SILENT_MODE"
@@ -272,6 +281,25 @@ for dir in "${SOURCE_DIRS[@]}"; do
         mapfile -t dir_projects < <(find_projects "$dir" 1)
         log "Found ${#dir_projects[@]} projects in $dir" "$LOG_FILE" "$SILENT_MODE"
         projects+=("${dir_projects[@]}")
+    fi
+done
+
+# Always ensure .ssh directory is included if backing up home directory
+for dir in "${SOURCE_DIRS[@]}"; do
+    if [ "$dir" = "$HOME" ] && [ -d "$HOME/.ssh" ]; then
+        # Check if .ssh is already in projects list
+        ssh_found=false
+        for proj in "${projects[@]}"; do
+            if [ "$proj" = "$HOME/.ssh" ]; then
+                ssh_found=true
+                break
+            fi
+        done
+        # Add .ssh if not already present
+        if [ "$ssh_found" = false ]; then
+            projects+=("$HOME/.ssh")
+            log "Added mandatory .ssh directory to backup list" "$LOG_FILE" "$SILENT_MODE"
+        fi
     fi
 done
 
@@ -355,11 +383,55 @@ if [ "$SILENT_MODE" = false ]; then
     echo -e "${YELLOW}=============================================${NC}"
     
     echo -e "Note: Each project's node_modules directory will be excluded"
-    if [ "$VERIFY_BACKUP" = true ]; then
-        echo -e "Backup verification will be performed after completion"
+    
+    # Ask about verification if not already set via command line
+    if [ "$SILENT_MODE" = false ] && [[ ! "$*" == *"--verify"* ]] && [[ ! "$*" == *"--no-verify"* ]] && [[ ! "$*" == *"--thorough-verify"* ]]; then
+        echo ""
+        echo -e "${CYAN}Backup Verification:${NC}"
+        echo -e "  Verification is ${YELLOW}DISABLED${NC} by default (for faster backups)"
+        echo -e "  Each .tar.gz file can be verified after compression for safety"
+        read -p "  Enable verification? [y/N]: " verify_choice
+        if [[ "$verify_choice" =~ ^[Yy]$ ]]; then
+            VERIFY_BACKUP=true
+            echo -e "  ${GREEN}Verification enabled${NC}"
+        else
+            VERIFY_BACKUP=false
+            echo -e "  ${YELLOW}Verification disabled for faster backups${NC}"
+        fi
+    elif [ "$VERIFY_BACKUP" = true ]; then
+        echo -e "${GREEN}Backup verification will be performed after completion${NC}"
+    else
+        echo -e "${YELLOW}Backup verification is disabled (use --verify to enable)${NC}"
     fi
     echo ""
+    
+    # Update backup name if verification status changed
+    if [ "$VERIFY_BACKUP" = true ]; then
+        BACKUP_NAME="wsl2_backup_VERIFIED_$DATE"
+    else
+        BACKUP_NAME="wsl2_backup_$DATE"
+    fi
+    FULL_BACKUP_PATH="$BACKUP_DIR/$BACKUP_NAME"
+    LOG_FILE="$FULL_BACKUP_PATH/backup_log.log"
+    STATS_FILE="$FULL_BACKUP_PATH/backup_stats.txt"
+    METADATA_FILE="$FULL_BACKUP_PATH/backup_metadata.json"
 fi
+
+# Create backup directory (after verification prompt if interactive)
+if ! mkdir -p "$FULL_BACKUP_PATH"; then
+    echo -e "${RED}ERROR: Failed to create backup directory: $FULL_BACKUP_PATH${NC}"
+    echo "No files were backed up. Please check directory permissions."
+    exit 1
+fi
+
+# Create necessary files
+for file in "$LOG_FILE" "$STATS_FILE" "$METADATA_FILE"; do
+    if ! touch "$file"; then
+        echo -e "${RED}ERROR: Failed to create file: $file${NC}"
+        echo "No files were backed up. The filesystem may be read-only or full."
+        exit 1
+    fi
+done
 
 # Track total sizes
 TOTAL_SRC_SIZE=0
@@ -371,10 +443,15 @@ FAILED_PROJECTS=0
 for project_path in "${projects[@]}"; do
     project=$(basename "$project_path")
     
-    # Skip excluded projects
-    if [[ " ${EXCLUDED_PROJECTS[*]} " == *" $project "* ]]; then
+    # Skip excluded projects, BUT always include .ssh (mandatory)
+    if [[ " ${EXCLUDED_PROJECTS[*]} " == *" $project "* ]] && [[ "$project" != ".ssh" ]]; then
         log "Skipping excluded project: $project" "$LOG_FILE" "$SILENT_MODE"
         continue
+    fi
+    
+    # Ensure .ssh is always backed up (mandatory)
+    if [[ "$project" == ".ssh" ]]; then
+        log "Backing up mandatory .ssh directory: $project_path" "$LOG_FILE" "$SILENT_MODE"
     fi
     
     PROJECT_BACKUP_FILE="$FULL_BACKUP_PATH/${project}_${DATE}.tar.gz"
@@ -478,16 +555,21 @@ for project_path in "${projects[@]}"; do
         log "Project $project backed up successfully (Compressed: $FORMATTED_ARCHIVE_SIZE, Ratio: ${RATIO}x)" "$LOG_FILE" "$SILENT_MODE"
         
         # Generate ASCII file structure for the project
-        PROJECT_STRUCTURE_FILE="${BACKUP_DIR}/${project}_structure.txt"
-        mkdir -p "${BACKUP_DIR}/structures"
+        # Store structure files inside the backup folder, not in root backup directory
+        PROJECT_STRUCTURE_FILE="${FULL_BACKUP_PATH}/${project}_structure.txt"
+        mkdir -p "${FULL_BACKUP_PATH}/structures"
         
         # Create ASCII tree structure using find and a custom script
         {
             echo "Structure of $project ($project_path):"
             echo "----------------------------------------"
             find "$project_path" -type d -o -type f | sort | while read -r path; do
-                # Skip node_modules and hidden files/dirs for clarity
-                if [[ "$path" == *"node_modules"* || "$(basename "$path")" == .* ]]; then
+                # Skip node_modules and most hidden files/dirs for clarity, but include .env files
+                if [[ "$path" == *"node_modules"* ]]; then
+                    continue
+                fi
+                # Skip hidden files/dirs except .env files
+                if [[ "$(basename "$path")" == .* ]] && [[ "$(basename "$path")" != ".env"* ]]; then
                     continue
                 fi
                 
@@ -776,6 +858,21 @@ fi
 
 # Cleanup
 rm -f "$EXCLUDE_FILE"
+
+# Clean up any structure files or other files that might be in the root backup directory
+# These should only exist inside the dated backup folders
+if [ -d "$BACKUP_DIR" ]; then
+    # Remove any structure files from root backup directory (they should be in backup folders)
+    find "$BACKUP_DIR" -maxdepth 1 -name "*_structure.txt" -type f -delete 2>/dev/null
+    
+    # Remove any structures directory from root backup directory (should be in backup folders)
+    if [ -d "$BACKUP_DIR/structures" ]; then
+        rm -rf "$BACKUP_DIR/structures" 2>/dev/null
+    fi
+    
+    # Remove any other text files that might be in root (keep only dated backup folders)
+    find "$BACKUP_DIR" -maxdepth 1 -type f \( -name "*.txt" -o -name "*.log" -o -name "*.json" \) ! -name ".*" -delete 2>/dev/null
+fi
 
 # Create logs directory if it doesn't exist
 mkdir -p "$(dirname "$BACKUP_HISTORY_LOG")"

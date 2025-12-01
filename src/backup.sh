@@ -14,7 +14,7 @@ source "$SCRIPT_DIR/../reports/reporting.sh"
 SILENT_MODE=false
 INCREMENTAL_BACKUP=false
 DIFFERENTIAL_BACKUP=false
-VERIFY_BACKUP=false
+VERIFY_BACKUP=false  # Verification disabled by default for faster backups
 THOROUGH_VERIFY=false
 COMPRESSION_LEVEL=6
 EMAIL_NOTIFICATION=""
@@ -45,6 +45,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --verify)
             VERIFY_BACKUP=true
+            shift
+            ;;
+        --no-verify)
+            VERIFY_BACKUP=false
             shift
             ;;
         --thorough-verify)
@@ -183,28 +187,17 @@ else
     BACKUP_TYPE="full"
 fi
 
-# Set dependent paths
-BACKUP_NAME="webdev_backup_$DATE"
+# Set dependent paths (will be updated after verification prompt if needed)
+# Add VERIFIED suffix to backup name if verification is enabled
+if [ "$VERIFY_BACKUP" = true ]; then
+    BACKUP_NAME="wsl2_backup_VERIFIED_$DATE"
+else
+    BACKUP_NAME="wsl2_backup_$DATE"
+fi
 FULL_BACKUP_PATH="$BACKUP_DIR/$BACKUP_NAME"
 LOG_FILE="$FULL_BACKUP_PATH/backup_log.log"
 STATS_FILE="$FULL_BACKUP_PATH/backup_stats.txt"
 METADATA_FILE="$FULL_BACKUP_PATH/backup_metadata.json"
-
-# Create backup directory
-if ! mkdir -p "$FULL_BACKUP_PATH"; then
-    echo -e "${RED}ERROR: Failed to create backup directory: $FULL_BACKUP_PATH${NC}"
-    echo "No files were backed up. Please check directory permissions."
-    exit 1
-fi
-
-# Create necessary files
-for file in "$LOG_FILE" "$STATS_FILE" "$METADATA_FILE"; do
-    if ! touch "$file"; then
-        echo -e "${RED}ERROR: Failed to create file: $file${NC}"
-        echo "No files were backed up. The filesystem may be read-only or full."
-        exit 1
-    fi
-done
 
 # Record start time
 START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
@@ -250,6 +243,25 @@ projects=()
 for dir in "${SOURCE_DIRS[@]}"; do
     mapfile -t dir_projects < <(find_projects "$dir" 1)
     projects+=("${dir_projects[@]}")
+done
+
+# Always ensure .ssh directory is included if backing up home directory (mandatory)
+for dir in "${SOURCE_DIRS[@]}"; do
+    if [ "$dir" = "$HOME" ] && [ -d "$HOME/.ssh" ]; then
+        # Check if .ssh is already in projects list
+        ssh_found=false
+        for proj in "${projects[@]}"; do
+            if [ "$proj" = "$HOME/.ssh" ]; then
+                ssh_found=true
+                break
+            fi
+        done
+        # Add .ssh if not already present
+        if [ "$ssh_found" = false ]; then
+            projects+=("$HOME/.ssh")
+            log "Added mandatory .ssh directory to backup list" "$LOG_FILE" "$SILENT_MODE"
+        fi
+    fi
 done
 
 if [ ${#projects[@]} -eq 0 ]; then
@@ -332,11 +344,55 @@ if [ "$SILENT_MODE" = false ]; then
     echo -e "${YELLOW}=============================================${NC}"
     
     echo -e "Note: Each project's node_modules directory will be excluded"
-    if [ "$VERIFY_BACKUP" = true ]; then
-        echo -e "Backup verification will be performed after completion"
+    
+    # Ask about verification if not already set via command line
+    if [ "$SILENT_MODE" = false ] && [[ ! "$*" == *"--verify"* ]] && [[ ! "$*" == *"--no-verify"* ]] && [[ ! "$*" == *"--thorough-verify"* ]]; then
+        echo ""
+        echo -e "${CYAN}Backup Verification:${NC}"
+        echo -e "  Verification is ${YELLOW}DISABLED${NC} by default (for faster backups)"
+        echo -e "  Each .tar.gz file can be verified after compression for safety"
+        read -p "  Enable verification? [y/N]: " verify_choice
+        if [[ "$verify_choice" =~ ^[Yy]$ ]]; then
+            VERIFY_BACKUP=true
+            echo -e "  ${GREEN}Verification enabled${NC}"
+        else
+            VERIFY_BACKUP=false
+            echo -e "  ${YELLOW}Verification disabled for faster backups${NC}"
+        fi
+    elif [ "$VERIFY_BACKUP" = true ]; then
+        echo -e "${GREEN}Backup verification will be performed after completion${NC}"
+    else
+        echo -e "${YELLOW}Backup verification is disabled (use --verify to enable)${NC}"
     fi
     echo ""
+    
+    # Update backup name if verification status changed
+    if [ "$VERIFY_BACKUP" = true ]; then
+        BACKUP_NAME="wsl2_backup_VERIFIED_$DATE"
+    else
+        BACKUP_NAME="wsl2_backup_$DATE"
+    fi
+    FULL_BACKUP_PATH="$BACKUP_DIR/$BACKUP_NAME"
+    LOG_FILE="$FULL_BACKUP_PATH/backup_log.log"
+    STATS_FILE="$FULL_BACKUP_PATH/backup_stats.txt"
+    METADATA_FILE="$FULL_BACKUP_PATH/backup_metadata.json"
 fi
+
+# Create backup directory (after verification prompt if interactive)
+if ! mkdir -p "$FULL_BACKUP_PATH"; then
+    echo -e "${RED}ERROR: Failed to create backup directory: $FULL_BACKUP_PATH${NC}"
+    echo "No files were backed up. Please check directory permissions."
+    exit 1
+fi
+
+# Create necessary files
+for file in "$LOG_FILE" "$STATS_FILE" "$METADATA_FILE"; do
+    if ! touch "$file"; then
+        echo -e "${RED}ERROR: Failed to create file: $file${NC}"
+        echo "No files were backed up. The filesystem may be read-only or full."
+        exit 1
+    fi
+done
 
 # Track total sizes
 TOTAL_SRC_SIZE=0
@@ -348,10 +404,15 @@ FAILED_PROJECTS=0
 for project_path in "${projects[@]}"; do
     project=$(basename "$project_path")
     
-    # Skip excluded projects
-    if [[ " ${EXCLUDED_PROJECTS[*]} " == *" $project "* ]]; then
+    # Skip excluded projects, BUT always include .ssh (mandatory)
+    if [[ " ${EXCLUDED_PROJECTS[*]} " == *" $project "* ]] && [[ "$project" != ".ssh" ]]; then
         log "Skipping excluded project: $project" "$LOG_FILE" "$SILENT_MODE"
         continue
+    fi
+    
+    # Ensure .ssh is always backed up (mandatory)
+    if [[ "$project" == ".ssh" ]]; then
+        log "Backing up mandatory .ssh directory: $project_path" "$LOG_FILE" "$SILENT_MODE"
     fi
     
     PROJECT_BACKUP_FILE="$FULL_BACKUP_PATH/${project}_${DATE}.tar.gz"

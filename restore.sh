@@ -113,7 +113,7 @@ if [ "$LIST_BACKUPS" = true ]; then
     echo -e "${YELLOW}Available Backups:${NC}"
     
     # Find all backup directories
-    mapfile -t backup_dirs < <(find "$BACKUP_DIR" -maxdepth 1 -type d -name "webdev_backup_*" | sort -r)
+    mapfile -t backup_dirs < <(find "$BACKUP_DIR" -maxdepth 1 -type d -name "wsl2_backup_*" | sort -r)
     
     if [ ${#backup_dirs[@]} -eq 0 ]; then
         echo -e "${RED}No backups found in $BACKUP_DIR${NC}"
@@ -123,7 +123,7 @@ if [ "$LIST_BACKUPS" = true ]; then
     for ((i=0; i<${#backup_dirs[@]}; i++)); do
         # Extract date from directory name
         dir_name=$(basename "${backup_dirs[$i]}")
-        backup_date=${dir_name#webdev_backup_}
+        backup_date=${dir_name#wsl2_backup_}
         
         # Count projects in this backup
         project_count=$(find "${backup_dirs[$i]}" -maxdepth 1 -type f -name "*.tar.gz" | wc -l)
@@ -149,18 +149,18 @@ fi
 # Find the backup to restore from
 if [ "$LATEST_BACKUP" = true ]; then
     # Find the latest backup
-    BACKUP_TO_RESTORE=$(find "$BACKUP_DIR" -maxdepth 1 -type d -name "webdev_backup_*" | sort -r | head -1)
+    BACKUP_TO_RESTORE=$(find "$BACKUP_DIR" -maxdepth 1 -type d -name "wsl2_backup_*" | sort -r | head -1)
     
     if [ -z "$BACKUP_TO_RESTORE" ]; then
         echo -e "${RED}ERROR: No backups found in $BACKUP_DIR${NC}"
         exit 1
     fi
     
-    BACKUP_DATE=$(basename "$BACKUP_TO_RESTORE" | sed 's/webdev_backup_//')
+    BACKUP_DATE=$(basename "$BACKUP_TO_RESTORE" | sed 's/wsl2_backup_//')
     echo -e "${GREEN}✓ Found latest backup from: $BACKUP_DATE${NC}"
 else
     # Find specific backup by date
-    BACKUP_TO_RESTORE="$BACKUP_DIR/webdev_backup_$BACKUP_DATE"
+    BACKUP_TO_RESTORE="$BACKUP_DIR/wsl2_backup_$BACKUP_DATE"
     
     if [ ! -d "$BACKUP_TO_RESTORE" ]; then
         echo -e "${RED}ERROR: Backup for date $BACKUP_DATE not found${NC}"
@@ -372,8 +372,6 @@ restore_project() {
         # Try to find original location
         if [ "$source_dir" = "webdev" ] && [ -d "$HOME/webdev" ]; then
             destination_dir="$HOME/webdev"
-        elif [ "$source_dir" = "inform6" ] && [ -d "$HOME/inform6" ]; then
-            destination_dir="$HOME/inform6"
         else
             # Look for the source directory in default locations
             for dir in "${DEFAULT_SOURCE_DIRS[@]}"; do

@@ -13,6 +13,8 @@ create_backup_archive() {
     local backup_file=$3
     local log_file=${4:-}
     local compression=${5:-6}
+    # Exclude node_modules contents completely (at any depth), but allow .env files
+    # The pattern */node_modules/* excludes all contents inside node_modules directories
     local exclude_pattern=${6:-"*/node_modules/*"}
     
     # Determine if we want to use parallel compression
@@ -35,6 +37,8 @@ create_backup_archive() {
             # Show progress for interactive mode
             (tar --use-compress-program="pigz -$compression" -cf "$backup_file" \
                 --exclude="$exclude_pattern" \
+                --exclude="node_modules/*" \
+                --exclude="*/node_modules" \
                 -C "$source_dir" "$project" 2> "$tar_log") &
             
             # Get PID of background tar process
@@ -58,6 +62,8 @@ create_backup_archive() {
             # Silent mode - just run normally
             if tar --use-compress-program="pigz -$compression" -cf "$backup_file" \
                 --exclude="$exclude_pattern" \
+                --exclude="node_modules/*" \
+                --exclude="*/node_modules" \
                 -C "$source_dir" "$project" 2>> "$log_file"; then
                 rm -f "$tar_log"
                 return 0
@@ -79,6 +85,8 @@ create_backup_archive() {
             # Show progress for interactive mode
             (tar -czf "$backup_file" \
                 --exclude="$exclude_pattern" \
+                --exclude="node_modules/*" \
+                --exclude="*/node_modules" \
                 -C "$source_dir" "$project" 2> "$tar_log") &
             
             # Get PID of background tar process
@@ -102,6 +110,8 @@ create_backup_archive() {
             # Silent mode - just run normally
             if tar -czf "$backup_file" \
                 --exclude="$exclude_pattern" \
+                --exclude="node_modules/*" \
+                --exclude="*/node_modules" \
                 -C "$source_dir" "$project" 2>> "$log_file"; then
                 rm -f "$tar_log"
                 return 0
@@ -137,6 +147,8 @@ create_incremental_backup() {
         # Incremental backup using existing snapshot
         if tar --listed-incremental="$snapshot_file" -czf "$backup_file" \
             --exclude="$exclude_pattern" \
+            --exclude="node_modules/*" \
+            --exclude="*/node_modules" \
             -C "$source_dir" "$project" 2>> "$log_file"; then
             return 0
         else
@@ -146,6 +158,8 @@ create_incremental_backup() {
         # First level backup - create snapshot
         if tar --listed-incremental="$snapshot_file" -czf "$backup_file" \
             --exclude="$exclude_pattern" \
+            --exclude="node_modules/*" \
+            --exclude="*/node_modules" \
             -C "$source_dir" "$project" 2>> "$log_file"; then
             return 0
         else
@@ -172,6 +186,8 @@ create_differential_backup() {
         
         if tar --listed-incremental="$base_snapshot" -czf "$backup_file" \
             --exclude="$exclude_pattern" \
+            --exclude="node_modules/*" \
+            --exclude="*/node_modules" \
             -C "$source_dir" "$project" 2>> "$log_file"; then
             return 0
         else
@@ -187,6 +203,8 @@ create_differential_backup() {
         # Create differential backup
         if tar --listed-incremental="$temp_snapshot" -czf "$backup_file" \
             --exclude="$exclude_pattern" \
+            --exclude="node_modules/*" \
+            --exclude="*/node_modules" \
             -C "$source_dir" "$project" 2>> "$log_file"; then
             rm -f "$temp_snapshot"
             return 0
@@ -264,10 +282,10 @@ find_projects() {
     fi
     
     # Find directories only up to max_depth, with a timeout to prevent hanging
-    # Use -not -path "*/\.*" to exclude hidden directories
+    # Use -not -path "*/\.*" to exclude hidden directories, BUT always include .ssh
     # Use -not -path "*/node_modules*" to exclude node_modules which can be large
     find "$source_dir" -maxdepth "$max_depth" -mindepth 1 -type d \
-         -not -path "*/\.*" \
+         \( -name ".ssh" -o -not -path "*/\.*" \) \
          -not -path "*/node_modules*" \
          | sort
 }
@@ -286,7 +304,7 @@ find_latest_backup() {
         find "$backup_dir" -type f -name "${project}_*.tar.gz" -printf "%T@ %p\n" | sort -nr | head -1 | cut -d' ' -f2-
     else
         # Look for any backup
-        find "$backup_dir" -type d -name "webdev_backup_*" -printf "%T@ %p\n" | sort -nr | head -1 | cut -d' ' -f2-
+        find "$backup_dir" -type d -name "wsl2_backup_*" -printf "%T@ %p\n" | sort -nr | head -1 | cut -d' ' -f2-
     fi
 }
 
@@ -304,7 +322,7 @@ list_all_backups() {
         find "$backup_dir" -type f -name "${project}_*.tar.gz" -printf "%T@ %p\n" | sort -nr | cut -d' ' -f2-
     else
         # List all backup directories
-        find "$backup_dir" -type d -name "webdev_backup_*" -printf "%T@ %p\n" | sort -nr | cut -d' ' -f2-
+        find "$backup_dir" -type d -name "wsl2_backup_*" -printf "%T@ %p\n" | sort -nr | cut -d' ' -f2-
     fi
 }
 

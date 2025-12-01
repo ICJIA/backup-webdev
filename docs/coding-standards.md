@@ -148,7 +148,7 @@ The WebDev Backup Tool supports backing up multiple source directories. This fun
 1. **Configuration**:
 
    - `DEFAULT_SOURCE_DIRS` array in `config.sh` stores the list of directories to back up
-   - Default directories include `~/webdev` and `~/inform6` if they exist
+   - Default directory is `~` (home directory) to back up all folders
 
 2. **Command Line Options**:
 

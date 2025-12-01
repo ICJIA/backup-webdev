@@ -18,7 +18,7 @@ NC='\033[0m' # No Color
 BACKUP_DIR="${DEFAULT_BACKUP_DIR:-$SCRIPT_DIR/backups}"
 SOURCE_DIRS=("${DEFAULT_SOURCE_DIRS[@]}")
 DATE=$(date '+%Y-%m-%d_%H-%M-%S')
-BACKUP_NAME="webdev_backup_$DATE"
+BACKUP_NAME="wsl2_backup_$DATE"
 FULL_BACKUP_PATH="$BACKUP_DIR/$BACKUP_NAME"
 
 echo -e "${CYAN}===== WebDev Quick Backup =====${NC}"
@@ -44,8 +44,9 @@ find_projects_quick() {
     echo "Searching for projects in: $dir" | tee -a "$LOG_FILE"
     
     # Set a strict timeout to prevent hanging
+    # Always include .ssh directory even though it's hidden (mandatory)
     timeout 10s find "$dir" -maxdepth 1 -mindepth 1 -type d \
-        -not -path "*/\.*" \
+        \( -name ".ssh" -o -not -path "*/\.*" \) \
         -not -path "*/node_modules*" 2>/dev/null | sort
 }
 
@@ -72,6 +73,25 @@ for dir in "${SOURCE_DIRS[@]}"; do
         done <<< "$dir_project_output"
     else
         echo -e "${YELLOW}No projects found in $dir${NC}" | tee -a "$LOG_FILE"
+    fi
+done
+
+# Always ensure .ssh directory is included if backing up home directory (mandatory)
+for dir in "${SOURCE_DIRS[@]}"; do
+    if [ "$dir" = "$HOME" ] && [ -d "$HOME/.ssh" ]; then
+        # Check if .ssh is already in projects list
+        ssh_found=false
+        for proj in "${projects[@]}"; do
+            if [ "$proj" = "$HOME/.ssh" ]; then
+                ssh_found=true
+                break
+            fi
+        done
+        # Add .ssh if not already present
+        if [ "$ssh_found" = false ]; then
+            projects+=("$HOME/.ssh")
+            echo "Added mandatory .ssh directory to backup list" | tee -a "$LOG_FILE"
+        fi
     fi
 done
 
@@ -145,7 +165,6 @@ for project_path in "${projects[@]}"; do
     echo -n "Compressing: " | tee -a "$LOG_FILE"
     
     # Special handling for projects with the same name as their parent directory
-    # This fixes the issue with "webdev" and "inform6" projects
     project_basename=$(basename "$project_path")
     dir_basename=$(basename "$src_dir")
     
@@ -198,7 +217,7 @@ for project_path in "${projects[@]}"; do
         # Run tar with timeout and show progress - normal case
         (
             # Create tar archive, excluding node_modules
-            timeout 300s tar -czf "$backup_file" --exclude="*/node_modules/*" -C "$src_dir" "$project_basename" 2>> "$LOG_FILE" &
+            timeout 300s tar -czf "$backup_file" --exclude="*/node_modules/*" --exclude="node_modules/*" --exclude="*/node_modules" -C "$src_dir" "$project_basename" 2>> "$LOG_FILE" &
             
             # Get PID of tar process
             tar_pid=$!
@@ -377,7 +396,22 @@ echo
 
 # Organize backup files
 echo "Organizing backup files..."
-"$SCRIPT_DIR/cleanup-backup-files.sh" --directory "$BACKUP_DIR" > /dev/null
+"$SCRIPT_DIR/cleanup-backup-files.sh" --directory "$FULL_BACKUP_PATH" > /dev/null
+
+# Clean up any structure files or other files that might be in the root backup directory
+# These should only exist inside the dated backup folders
+if [ -d "$BACKUP_DIR" ]; then
+    # Remove any structure files from root backup directory (they should be in backup folders)
+    find "$BACKUP_DIR" -maxdepth 1 -name "*_structure.txt" -type f -delete 2>/dev/null
+    
+    # Remove any structures directory from root backup directory (should be in backup folders)
+    if [ -d "$BACKUP_DIR/structures" ]; then
+        rm -rf "$BACKUP_DIR/structures" 2>/dev/null
+    fi
+    
+    # Remove any other text files that might be in root (keep only dated backup folders)
+    find "$BACKUP_DIR" -maxdepth 1 -type f \( -name "*.txt" -o -name "*.log" -o -name "*.json" \) ! -name ".*" -delete 2>/dev/null
+fi
 echo -e "${GREEN}✓ Backup files organized${NC}"
 
 # Backup completed

@@ -14,22 +14,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Default backup destination directory
 # This is where backups will be stored
-DEFAULT_BACKUP_DIR="/mnt/f/backups"
+DEFAULT_BACKUP_DIR="/mnt/e/backups"
 
 # Backup naming convention - prefix for backup directories
-BACKUP_PREFIX="webdev_backup"
+BACKUP_PREFIX="wsl2_backup"
 
 # ----------------------
 # Default Source Directories
 # ----------------------
 
-# NOTE: By default, the script will auto-detect the following directories:
-# - $HOME/webdev (if it exists)
-# - $HOME/inform6 (if it exists)
-# - The parent directory of this script (if above directories don't exist)
-# - The script directory itself (as last resort)
+# NOTE: By default, the script will back up all folders in the home directory (~)
+# To exclude specific folders, use the --exclude option on the command line
+# IMPORTANT: The .ssh directory is ALWAYS backed up (mandatory) and cannot be excluded
 #
-# To manually add source directories, add them to this array:
+# To manually specify source directories, add them to this array:
 DEFAULT_SOURCE_DIRS=()
 # Examples:
 # DEFAULT_SOURCE_DIRS=("/home/user/projects" "/home/user/repositories")
@@ -54,39 +52,27 @@ DATE_FORMAT="%Y-%m-%d_%H-%M-%S"
 # =====================================================================
 
 # Auto-detect source directories if none are explicitly configured
+# By default, back up the entire home directory
 if [ ${#DEFAULT_SOURCE_DIRS[@]} -eq 0 ]; then
-    # Check for ~/webdev directory and add it if exists
-    if [ -d "$HOME/webdev" ]; then
-        DEFAULT_SOURCE_DIRS+=("$HOME/webdev")
-    fi
-    
-    # Check for ~/inform6 directory and add it if exists
-    if [ -d "$HOME/inform6" ]; then
-        DEFAULT_SOURCE_DIRS+=("$HOME/inform6")
-    fi
-    
-    # If no default directories found, try to use parent directory of script
-    if [ ${#DEFAULT_SOURCE_DIRS[@]} -eq 0 ]; then
-        # Try to use parent directory of script location
-        parent_dir="$(dirname "$SCRIPT_DIR")"
-        if [ -d "$parent_dir" ] && [ -r "$parent_dir" ]; then
-            DEFAULT_SOURCE_DIRS+=("$parent_dir")
-        else
-            # Fallback to script directory itself
-            DEFAULT_SOURCE_DIRS+=("$SCRIPT_DIR")
-        fi
-    fi
+    # Default to home directory to back up all folders
+    DEFAULT_SOURCE_DIRS+=("$HOME")
 fi
 
 # For backward compatibility - first directory is the default single source
 DEFAULT_SOURCE_DIR="${DEFAULT_SOURCE_DIRS[0]}"
 
 # Verify and create backup directory if needed
-if [ ! -d "$DEFAULT_BACKUP_DIR" ] || [ ! -w "$DEFAULT_BACKUP_DIR" ]; then
-    # Fallback to script directory if default isn't accessible
+if [ ! -d "$DEFAULT_BACKUP_DIR" ]; then
+    # Create the backup directory if it doesn't exist
+    mkdir -p "$DEFAULT_BACKUP_DIR" || {
+        # Fallback to script directory if default isn't accessible
+        DEFAULT_BACKUP_DIR="$SCRIPT_DIR/backups"
+        mkdir -p "$DEFAULT_BACKUP_DIR"
+    }
+elif [ ! -w "$DEFAULT_BACKUP_DIR" ]; then
+    # If directory exists but isn't writable, fallback to script directory
     DEFAULT_BACKUP_DIR="$SCRIPT_DIR/backups"
-    # Create it if it doesn't exist
-    [ ! -d "$DEFAULT_BACKUP_DIR" ] && mkdir -p "$DEFAULT_BACKUP_DIR"
+    mkdir -p "$DEFAULT_BACKUP_DIR"
 fi
 
 # Current date for this run
