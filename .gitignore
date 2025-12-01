@@ -50,3 +50,8 @@ secrets.sh
 
 # Allow example files
 !*.example
+
+# Archive directory
+# Note: The archive/ directory contains legacy code and is kept in git for reference.
+# Test scripts in archive/src.legacy/test/ are still actively used.
+#archive/

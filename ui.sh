@@ -119,6 +119,7 @@ show_restore_help() {
     echo "  --project PROJECT       Restore specific project only"
     echo "  --file FILE             Restore specific file only"
     echo "  --test                  Test restore without actually extracting files"
+    echo "  --skip-verify           Skip backup integrity verification (not recommended)"
     echo "  -d, --dest DIR          Set custom restore destination directory"
     echo "  -s, --source DIR        Set custom backup source directory"
     echo "  -y, --yes               Skip confirmation prompts"

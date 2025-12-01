@@ -4,8 +4,8 @@
 
 # Source the shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Go up to root directory (src/test -> src -> root)
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Go up to root directory (archive/src.legacy/test -> archive/src.legacy -> archive -> root)
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$ROOT_DIR/config.sh"
 source "$ROOT_DIR/utils.sh"
 source "$ROOT_DIR/ui.sh"
@@ -15,6 +15,8 @@ TEST_BACKUP_NAME="cron_test_$(date +%Y%m%d_%H%M%S)"
 TEST_BACKUP_PATH="$TEST_DIR/$TEST_BACKUP_NAME"
 LOG_FILE="$TEST_BACKUP_PATH/cron_test_log.log"
 BACKUP_SCRIPT="$ROOT_DIR/webdev-backup.sh"
+# Update TEST_DIR to use root-level test directory
+TEST_DIR="$ROOT_DIR/test"
 TMP_CRONTAB="/tmp/crontab-test.$$"
 CRON_COMMENT="# TEST - WebDev Backup Tool automatic backup"
 MASTER_LOG_FILE="$TEST_HISTORY_LOG"

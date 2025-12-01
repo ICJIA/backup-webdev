@@ -8,13 +8,17 @@ A robust backup solution for web development projects that supports multiple sou
 - **Flexible Backup Types**: Full, incremental, or differential backups
 - **Quick Backup**: One-click backup using default settings
 - **Compression**: Optimized compression with multi-threading support (via pigz)
-- **Verification**: Integrity verification of backup archives
+- **Verification**: Integrity verification of backup archives (during backup and before restore)
 - **Exclusion Rules**: Automatically excludes node_modules and other large dependencies
 - **Cloud Integration**: Upload backups to AWS S3, DigitalOcean Spaces, Dropbox, or Google Drive
-- **Reporting**: Detailed HTML reports with directory grouping and email notifications
+- **Modular Reporting**: Comprehensive reporting system with HTML reports, email notifications, and charts
 - **File Structure Visualization**: Interactive modals showing ASCII file structure diagrams
 - **Dashboard**: Visual dashboard for backup statistics and forecasting
-- **Restore**: Simple project restoration with preview capability
+- **Backup Comparison**: Compare two backups to see what changed (added, deleted, modified files)
+- **Restore with Validation**: Automatic backup integrity checks before restore operations
+- **Version Checking**: Script compatibility verification to prevent version mismatches
+- **Enhanced Error Messages**: Context-aware error messages with actionable troubleshooting tips
+- **Standardized Logging**: Consistent log format with log levels (INFO, WARNING, ERROR, DEBUG)
 - **Security**: Built-in security features and encryption support
 
 ## Installation
@@ -149,7 +153,7 @@ Upload backup to cloud storage:
 
 ### Restore Backups
 
-Restore the latest backup:
+Restore the latest backup (with automatic integrity validation):
 
 ```bash
 ./restore.sh --latest
@@ -160,6 +164,46 @@ Restore a specific project from backup:
 ```bash
 ./restore.sh --project myproject --dest ~/restored
 ```
+
+Restore with integrity validation skipped (not recommended):
+
+```bash
+./restore.sh --latest --skip-verify
+```
+
+**Note:** By default, the restore process validates backup integrity before extraction. This includes:
+- Archive integrity checks (tar validation)
+- SHA256 checksum verification (if available)
+- File corruption detection
+
+Use `--skip-verify` only if you're certain the backup is valid and need faster restore times.
+
+### Compare Backups
+
+Compare two backups to see what changed:
+
+```bash
+# Compare latest backup with previous one
+./compare-backups.sh --backup1 latest --backup2 latest
+
+# Compare specific backups
+./compare-backups.sh --backup1 /mnt/e/backups/wsl2_backup_2025-03-29_10-00-00 --backup2 /mnt/e/backups/wsl2_backup_2025-03-28_10-00-00
+
+# Compare specific project only
+./compare-backups.sh --backup1 latest --backup2 latest --project myproject
+
+# Output in JSON format
+./compare-backups.sh --backup1 latest --backup2 latest --format json
+
+# Show only changed files
+./compare-backups.sh --backup1 latest --backup2 latest --only-changes
+```
+
+The comparison tool shows:
+- **Added files**: Files present in backup2 but not in backup1
+- **Deleted files**: Files present in backup1 but not in backup2
+- **Common files**: Files present in both backups
+- **Summary statistics**: Total counts of changes
 
 ### Run Tests
 
@@ -184,6 +228,24 @@ The configuration is stored in `config.sh`. You can modify default settings:
 - Compression level
 - Email notification settings
 - Cloud storage preferences
+- Version information (`VERSION`)
+
+### Version Management
+
+The tool includes version checking to ensure script compatibility:
+
+- Version is defined in `config.sh` as `VERSION="1.7.0"`
+- Scripts can check version compatibility using `check_version_compatibility()` from `utils.sh`
+- Version mismatches are detected and reported with warnings
+
+### Logging Configuration
+
+The tool uses standardized logging with the following features:
+
+- **Log Format**: `[TIMESTAMP] [LEVEL] MESSAGE`
+- **Log Levels**: INFO, WARNING, ERROR, DEBUG
+- **Color Coding**: Logs are color-coded by level for better readability
+- **Debug Mode**: Set `DEBUG_MODE=true` environment variable to enable debug logging
 
 ## File Structure
 
@@ -204,12 +266,15 @@ Scripts are categorized as:
   - All test scripts (`test-*.sh`, `run-*.sh`)
 
 - **Module Scripts** (Sourced): These are library scripts that provide functions to other scripts:
-  - `config.sh` - Configuration variables
-  - `utils.sh` - Utility functions
+  - `config.sh` - Configuration variables and version information
+  - `utils.sh` - Utility functions including version checking
   - `fs.sh` - Filesystem operations
   - `ui.sh` - User interface functions
-  - `reporting.sh` - Reporting functions
-  - `error-handling.sh` - Error handling
+  - `reporting.sh` - Main reporting interface (sources specialized modules)
+  - `reporting-html.sh` - HTML report generation module
+  - `reporting-email.sh` - Email report generation module
+  - `reporting-charts.sh` - Chart and visualization generation module
+  - `error-handling.sh` - Error handling with enhanced messages
 
 Below is a comprehensive list of all files in the project and their purposes:
 
@@ -227,7 +292,11 @@ Below is a comprehensive list of all files in the project and their purposes:
 | utils.sh              | Utility functions                 | Shared helper functions used across scripts            |
 | fs.sh                 | Filesystem utilities              | Functions for file and directory operations            |
 | error-handling.sh     | Error management                  | Standardized error handling and reporting              |
-| reporting.sh          | Reporting functions               | Creates backup reports and summaries                   |
+| reporting.sh          | Reporting functions               | Main reporting interface (sources specialized modules)   |
+| reporting-html.sh     | HTML report module                | HTML report generation (sourced by reporting.sh)         |
+| reporting-email.sh    | Email report module               | Email report generation (sourced by reporting.sh)        |
+| reporting-charts.sh   | Chart generation module           | Chart and visualization generation (sourced by reporting.sh) |
+| compare-backups.sh    | Backup comparison tool            | Compare two backups to show differences                  |
 | security-audit.sh     | Security checker                  | Analyzes permissions and security issues               |
 | secure-permissions.sh | Permission manager                | Sets appropriate permissions on backup files           |
 | secure-secrets.sh     | Secret management                 | Handles encryption keys and sensitive data             |
@@ -326,13 +395,26 @@ This script:
 
 ## Enhanced Reporting
 
+The backup tool uses a modular reporting system for better maintainability and extensibility. The reporting functionality is split into specialized modules:
+
+### Modular Reporting Architecture
+
+- **`reporting.sh`**: Main reporting interface that sources specialized modules
+- **`reporting-html.sh`**: HTML report generation (650+ lines)
+- **`reporting-email.sh`**: Email report generation
+- **`reporting-charts.sh`**: Chart and visualization generation (450+ lines)
+
+This modular structure makes the codebase more maintainable and allows for easier testing and updates.
+
+### HTML Reports
+
 The backup tool generates comprehensive HTML reports with several advanced features:
 
-### Project Directory Grouping
+#### Project Directory Grouping
 
-Projects are now organized by their source directories in reports, making it easier to understand which projects come from which locations. Within each directory group, projects are alphabetically sorted for easy reference.
+Projects are organized by their source directories in reports, making it easier to understand which projects come from which locations. Within each directory group, projects are alphabetically sorted for easy reference.
 
-### Interactive Project Details
+#### Interactive Project Details
 
 Each project in the HTML report is interactive:
 
@@ -340,6 +422,26 @@ Each project in the HTML report is interactive:
 2. View the project's complete file structure in an ASCII tree format
 3. See detailed statistics including compression ratio and file counts
 4. Navigate between projects using a tabbed interface
+
+#### Email Reports
+
+Email reports provide concise summaries suitable for email notifications:
+
+```bash
+# Email reports are automatically generated and can be sent via:
+# - Email notification functions in utils.sh
+# - Integration with sendmail or mail commands
+```
+
+#### Charts and Visualizations
+
+The reporting system can generate charts and visualizations (requires gnuplot):
+
+- Backup size history charts
+- Storage forecast predictions
+- Visual dashboard with statistics
+
+All chart generation includes safe fallbacks if gnuplot is not available.
 
 ### Quick Backup Feature
 
@@ -469,6 +571,32 @@ chmod +x *.sh
 3. Check logs:
    ```bash
    tail -f logs/backup_history.log
+   ```
+
+#### Restore Validation Failures
+
+**Problem:** Restore fails with "Backup validation failed" or "Checksum mismatch".
+
+**Solutions:**
+1. The backup may be corrupted - try another backup:
+   ```bash
+   ./restore.sh --list  # List all available backups
+   ./restore.sh --backup-date <different-date>
+   ```
+
+2. If you're certain the backup is valid, skip validation (not recommended):
+   ```bash
+   ./restore.sh --latest --skip-verify
+   ```
+
+3. Re-verify the backup archive manually:
+   ```bash
+   tar -tzf /path/to/backup.tar.gz > /dev/null
+   ```
+
+4. Check for checksum file:
+   ```bash
+   ls -la /path/to/backup.tar.gz.sha256
    ```
 
 #### NPM Scripts Not Working
@@ -680,10 +808,43 @@ You can also use the following npm scripts for common operations:
 | `npm run restore` | Restore from backup | `npm run restore` |
 | `npm run restore:list` | List available backups | `npm run restore:list` |
 | `npm run cron` | Configure cron jobs | `npm run cron` |
+| `npm run compare` | Compare two backups | `npm run compare` (add to package.json) |
+
+**Note:** To add the compare script to package.json:
+```json
+"compare": "./compare-backups.sh"
+```
+
+## Recent Improvements (Version 1.7.0+)
+
+### Code Quality Enhancements
+
+- **Modular Reporting System**: Split large `reporting.sh` (1,150 lines) into specialized modules for better maintainability
+- **Version Checking**: Added script compatibility verification to prevent version mismatches
+- **Enhanced Error Messages**: Context-aware error messages with actionable troubleshooting tips
+- **Standardized Logging**: Consistent log format with log levels and color coding
+- **Backup Validation**: Automatic integrity checks before restore operations
+
+### New Features
+
+- **Backup Comparison Tool**: Compare two backups to see what changed (`compare-backups.sh`)
+- **Restore Validation**: Validates backup integrity before extraction (with `--skip-verify` option)
+- **Improved Error Handling**: Error messages now include context-specific solutions
+- **Debug Mode**: Set `DEBUG_MODE=true` to enable detailed debug logging
+
+### Documentation Updates
+
+- **Script Type Documentation**: Clear distinction between entry point scripts and module scripts
+- **Archived Code Documentation**: Documented legacy code in `archive/src.legacy/`
+- **Troubleshooting Section**: Comprehensive troubleshooting guide with common issues and solutions
 
 ## Architecture
 
 For a detailed overview of the system architecture, component relationships, and data flow, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Version History
+
+See [CHANGELOG.md](CHANGELOG.md) for a complete history of changes, improvements, and bug fixes.
 
 ## License
 

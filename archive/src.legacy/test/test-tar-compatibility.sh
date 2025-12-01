@@ -3,8 +3,8 @@
 
 # Source the shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Go up to root directory (src/test -> src -> root)
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Go up to root directory (archive/src.legacy/test -> archive/src.legacy -> archive -> root)
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$ROOT_DIR/config.sh"
 source "$ROOT_DIR/utils.sh"
 source "$ROOT_DIR/ui.sh"

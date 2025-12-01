@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Backup comparison tool (`compare-backups.sh`) to show differences between backups
+- Version checking system to ensure script compatibility
+- Backup integrity validation before restore operations
+- Improved error messages with actionable troubleshooting tips
+- Standardized logging format with log levels (INFO, WARNING, ERROR, DEBUG)
+- Script type documentation (entry points vs modules)
+- Modular reporting system (split reporting.sh into specialized modules)
+
+### Changed
+- Refactored `reporting.sh` (1,150 lines) into modular structure:
+  - `reporting-html.sh` - HTML report generation
+  - `reporting-email.sh` - Email report generation
+  - `reporting-charts.sh` - Chart and visualization generation
+- Improved error messages with context-specific troubleshooting tips
+- Enhanced logging with standardized format and log levels
+- Updated test scripts to correctly reference root-level modules
+- Documented archived configuration files with warnings
+
+### Fixed
+- Test script source paths after directory restructuring
+- Restore script now validates backup integrity before extraction
+- Error messages now provide actionable solutions
+- Logging format consistency across all scripts
+
 ## [1.7.0] - 2025-03-30
 
 ### Added

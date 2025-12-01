@@ -17,6 +17,7 @@ FILE_NAME=""
 TEST_ONLY=false
 DRY_RUN=false
 SKIP_CONFIRMATION=false
+SKIP_VERIFY=false
 CUSTOM_SOURCE_DIR=""
 CUSTOM_RESTORE_DIR=""
 
@@ -267,8 +268,7 @@ else
 fi
 
 # Validate backup integrity before restore (unless --skip-verify is used)
-SKIP_VERIFY=false
-if [[ "$*" != *"--skip-verify"* ]]; then
+if [ "$SKIP_VERIFY" != true ]; then
     echo -e "${CYAN}Validating backup integrity...${NC}"
     log "Validating backup integrity before restore" "$LOG_FILE"
     
