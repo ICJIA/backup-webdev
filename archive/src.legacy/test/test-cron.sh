@@ -4,15 +4,17 @@
 
 # Source the shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../core/config.sh"
-source "$SCRIPT_DIR/../utils/utils.sh"
-source "$SCRIPT_DIR/../ui/ui.sh"
+# Go up to root directory (src/test -> src -> root)
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$ROOT_DIR/config.sh"
+source "$ROOT_DIR/utils.sh"
+source "$ROOT_DIR/ui.sh"
 
 # Test configuration
 TEST_BACKUP_NAME="cron_test_$(date +%Y%m%d_%H%M%S)"
 TEST_BACKUP_PATH="$TEST_DIR/$TEST_BACKUP_NAME"
 LOG_FILE="$TEST_BACKUP_PATH/cron_test_log.log"
-BACKUP_SCRIPT="$SCRIPT_DIR/webdev-backup.sh"
+BACKUP_SCRIPT="$ROOT_DIR/webdev-backup.sh"
 TMP_CRONTAB="/tmp/crontab-test.$$"
 CRON_COMMENT="# TEST - WebDev Backup Tool automatic backup"
 MASTER_LOG_FILE="$TEST_HISTORY_LOG"

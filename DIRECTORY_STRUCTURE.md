@@ -1,5 +1,9 @@
 # Directory Structure Documentation
 
+**Last Updated:** 2025-03-30  
+**Version:** 1.7.0  
+**Status:** Consolidated - src/ archived
+
 ## Active Structure (Root Level)
 
 The **root-level scripts** are the active, production-ready scripts used by the WebDev Backup Tool. All package.json scripts, the main entry point (`webdev-backup.sh`), and all documentation reference these root-level scripts.
@@ -13,42 +17,46 @@ The **root-level scripts** are the active, production-ready scripts used by the 
 - `quick-backup.sh` - Quick backup script
 - All test scripts (`run-all-tests.sh`, `test-backup.sh`, etc.)
 
-## Alternative Structure (`src/` Directory)
+## Archived Structure (`archive/src.legacy/`)
 
-The `src/` directory contains an **alternative organizational structure** that groups scripts into subdirectories:
-- `src/core/` - Core configuration and utilities
-- `src/utils/` - Utility functions
-- `src/ui/` - User interface components
-- `src/reports/` - Reporting functions
-- `src/security/` - Security-related scripts
-- `src/test/` - Test scripts
-- `src/setup/` - Setup and configuration scripts
+The `src/` directory has been **archived** to `archive/src.legacy/` as of version 1.7.0. This directory contained an alternative organizational structure that grouped scripts into subdirectories:
+- `archive/src.legacy/core/` - Core configuration and utilities (archived)
+- `archive/src.legacy/utils/` - Utility functions (archived)
+- `archive/src.legacy/ui/` - User interface components (archived)
+- `archive/src.legacy/reports/` - Reporting functions (archived)
+- `archive/src.legacy/security/` - Security-related scripts (archived)
+- `archive/src.legacy/test/` - Test scripts (archived, but still referenced)
+- `archive/src.legacy/setup/` - Setup and configuration scripts (archived)
 
 ### Current Status
 
-**The `src/` directory is NOT actively used** by the main application. However:
-- Test scripts in `src/test/` are referenced by package.json (e.g., `test:cron`, `test:tar`)
-- The structure may be useful for future reorganization
-- Some scripts may be duplicates or alternative implementations
-
-### Recommendation
-
-1. **For now:** Continue using root-level scripts (current active structure)
-2. **Future consideration:** If reorganizing, either:
-   - Move all scripts to `src/` structure and update all references
-   - Remove `src/` directory if it's not needed
-   - Document which scripts in `src/` are actively maintained
+**The `archive/src.legacy/` directory is archived and NOT actively used** by the main application. However:
+- Test scripts in `archive/src.legacy/test/` are still referenced by package.json (e.g., `test:cron`, `test:tar`)
+- These test scripts have been updated to correctly source root-level modules
+- The archived structure is preserved for reference but should not be modified
 
 ### Test Scripts Location
 
-Some test scripts are located in `src/test/`:
-- `src/test/test-cron.sh` - Referenced by `npm run test:cron`
-- `src/test/test-tar-compatibility.sh` - Referenced by `npm run test:tar`
+Test scripts are located in `archive/src.legacy/test/`:
+- `archive/src.legacy/test/test-cron.sh` - Referenced by `npm run test:cron`
+- `archive/src.legacy/test/test-tar-compatibility.sh` - Referenced by `npm run test:tar`
 
-These are the only scripts from `src/` that are currently referenced by package.json.
+These scripts have been updated to source modules from the root directory using `ROOT_DIR` variable.
+
+### Why Archive Instead of Delete?
+
+The `src/` structure was archived rather than deleted to:
+1. Preserve alternative organizational approach for future reference
+2. Maintain test scripts that are still in use
+3. Allow for potential future reorganization if needed
+4. Keep history of project structure evolution
+
+### Recommendation
+
+1. **Current approach:** Use root-level scripts (active structure)
+2. **Test scripts:** Continue using archived test scripts (they work correctly)
+3. **Future:** If reorganizing, consider moving all scripts to a structured `src/` directory, but update all references comprehensively
 
 ---
 
-**Last Updated:** 2025-03-30  
-**Version:** 1.7.0
-
+**Note:** Do not modify files in `archive/src.legacy/` unless you're updating test script source paths or moving them to root level.

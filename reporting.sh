@@ -296,8 +296,10 @@ EOF
                 continue
             fi
             
-            # Debug output to log
-            echo "DEBUG: Processing line: $project, $full_project_path, $src_size, $archive_size, $ratio" >> "$FULL_BACKUP_PATH/report_debug.log"
+            # Debug output to log (only if DEBUG mode is enabled)
+            if [ "${DEBUG_MODE:-false}" = "true" ]; then
+                echo "DEBUG: Processing line: $project, $full_project_path, $src_size, $archive_size, $ratio" >> "$FULL_BACKUP_PATH/report_debug.log"
+            fi
             
             # Get the source directory from the full path (parent directory)
             local src_dir=$(dirname "$full_project_path")
@@ -305,21 +307,29 @@ EOF
             # Make sure numeric values are valid
             # If sizes are missing or invalid, use a default
             if ! [[ "$src_size" =~ ^[0-9]+$ ]]; then
-                echo "DEBUG: Invalid src_size: $src_size" >> "$FULL_BACKUP_PATH/report_debug.log"
+                if [ "${DEBUG_MODE:-false}" = "true" ]; then
+                    echo "DEBUG: Invalid src_size: $src_size" >> "$FULL_BACKUP_PATH/report_debug.log"
+                fi
                 src_size=1000000  # Default to 1MB
             fi
             
             if ! [[ "$archive_size" =~ ^[0-9]+$ ]]; then
-                echo "DEBUG: Invalid archive_size: $archive_size" >> "$FULL_BACKUP_PATH/report_debug.log"
+                if [ "${DEBUG_MODE:-false}" = "true" ]; then
+                    echo "DEBUG: Invalid archive_size: $archive_size" >> "$FULL_BACKUP_PATH/report_debug.log"
+                fi
                 archive_size=500000  # Default to 500KB
             fi
             
             # Recalculate ratio if needed
             if ! [[ "$ratio" =~ ^[0-9]*\.?[0-9]+$ ]] || [ "$ratio" = "0" ] || [ -z "$ratio" ]; then
-                echo "DEBUG: Invalid ratio: $ratio" >> "$FULL_BACKUP_PATH/report_debug.log"
+                if [ "${DEBUG_MODE:-false}" = "true" ]; then
+                    echo "DEBUG: Invalid ratio: $ratio" >> "$FULL_BACKUP_PATH/report_debug.log"
+                fi
                 if [ "$archive_size" -gt 0 ] && [ "$src_size" -gt 0 ]; then
                     ratio=$(awk "BEGIN {printf \"%.1f\", ($src_size/$archive_size)}")
-                    echo "DEBUG: Recalculated ratio: $ratio" >> "$FULL_BACKUP_PATH/report_debug.log"
+                    if [ "${DEBUG_MODE:-false}" = "true" ]; then
+                        echo "DEBUG: Recalculated ratio: $ratio" >> "$FULL_BACKUP_PATH/report_debug.log"
+                    fi
                 else
                     ratio="1.0"
                 fi

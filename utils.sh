@@ -1,6 +1,8 @@
 #!/bin/bash
 # utils.sh - Shared utility functions for backup-webdev
 # This file contains common functions used across all scripts
+#
+# SCRIPT TYPE: Module (sourced by other scripts, not executed directly)
 
 # Set restrictive umask to ensure secure file creation
 umask 027
@@ -8,6 +10,28 @@ umask 027
 # Source the shared configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
+
+# Version checking function
+check_version_compatibility() {
+    local required_version="${1:-$VERSION}"
+    local current_version="${VERSION:-unknown}"
+    
+    if [ "$current_version" = "unknown" ]; then
+        echo -e "${YELLOW}Warning: Version information not available${NC}" >&2
+        return 0  # Don't fail if version not set
+    fi
+    
+    # Simple version check (can be enhanced for semantic versioning)
+    if [ "$current_version" != "$required_version" ]; then
+        echo -e "${YELLOW}Warning: Version mismatch detected${NC}" >&2
+        echo -e "  Current: $current_version" >&2
+        echo -e "  Expected: $required_version" >&2
+        echo -e "  This may cause compatibility issues." >&2
+        return 1
+    fi
+    
+    return 0
+}
 
 # Source secrets file if it exists (contains API keys and sensitive data)
 if [ -f "$SCRIPT_DIR/secrets.sh" ]; then
@@ -67,19 +91,39 @@ handle_error() {
     exit $exit_code
 }
 
-# Logging function
+# Logging function with standardized format
 log() {
     local message=$1
     local log_file=${2:-}
     local silent_mode=${3:-false}
+    local log_level=${4:-INFO}
     local timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
     
+    # Standardized log format: [TIMESTAMP] [LEVEL] MESSAGE
+    local log_entry="[$timestamp] [$log_level] $message"
+    
     if [[ -n "$log_file" && -d "$(dirname "$log_file")" ]]; then
-        echo "$timestamp - $message" >> "$log_file"
+        echo "$log_entry" >> "$log_file"
     fi
     
     if [[ "$silent_mode" == false ]]; then
-        echo -e "$timestamp - $message"
+        # Color code based on log level
+        case "$log_level" in
+            ERROR|FATAL)
+                echo -e "${RED}$log_entry${NC}"
+                ;;
+            WARNING|WARN)
+                echo -e "${YELLOW}$log_entry${NC}"
+                ;;
+            DEBUG)
+                if [ "${DEBUG_MODE:-false}" = "true" ]; then
+                    echo -e "${CYAN}$log_entry${NC}"
+                fi
+                ;;
+            *)
+                echo -e "$log_entry"
+                ;;
+        esac
     fi
 }
 

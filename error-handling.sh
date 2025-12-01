@@ -71,17 +71,33 @@ handle_error() {
     if [ "$silent" = false ]; then
         case $level in
             $ERROR_INFO)
-                echo -e "${CYAN}INFO: ${message}${NC}"
+                echo -e "${CYAN}ℹ INFO: ${message}${NC}"
                 ;;
             $ERROR_WARNING)
-                echo -e "${YELLOW}WARNING: ${message}${NC}"
+                echo -e "${YELLOW}⚠ WARNING: ${message}${NC}"
+                echo -e "${YELLOW}   Tip: Check the troubleshooting section in README.md for solutions${NC}"
                 ;;
             $ERROR_CRITICAL)
-                echo -e "${RED}ERROR: ${message}${NC}"
+                echo -e "${RED}✗ ERROR: ${message}${NC}"
+                echo -e "${YELLOW}   Troubleshooting:${NC}"
+                case $code in
+                    1) echo -e "   - Run ./check-config.sh to verify configuration" ;;
+                    2) echo -e "   - Check disk space: df -h" ;;
+                    3) echo -e "   - Install missing tools or run ./install.sh" ;;
+                    4) echo -e "   - Run ./secure-permissions.sh to fix permissions" ;;
+                    5) echo -e "   - Check network connection and credentials" ;;
+                    6) echo -e "   - Check backup destination is writable" ;;
+                    7) echo -e "   - Backup may be corrupted, try another backup" ;;
+                    8) echo -e "   - Check restore destination permissions" ;;
+                    9) echo -e "   - Verify cloud credentials in secrets.sh" ;;
+                    10) echo -e "   - Run with --help to see usage information" ;;
+                esac
+                echo -e "   - See README.md troubleshooting section for more help"
                 ;;
             $ERROR_FATAL)
-                echo -e "${RED}FATAL ERROR: ${message}${NC}"
-                echo -e "${RED}The program will now exit.${NC}"
+                echo -e "${RED}✗ FATAL ERROR: ${message}${NC}"
+                echo -e "${RED}   The program will now exit.${NC}"
+                echo -e "${YELLOW}   For help, see: README.md or run ./check-config.sh${NC}"
                 ;;
         esac
     fi

@@ -266,6 +266,73 @@ else
     fi
 fi
 
+# Validate backup integrity before restore (unless --skip-verify is used)
+SKIP_VERIFY=false
+if [[ "$*" != *"--skip-verify"* ]]; then
+    echo -e "${CYAN}Validating backup integrity...${NC}"
+    log "Validating backup integrity before restore" "$LOG_FILE"
+    
+    # Check if backup directory exists and is readable
+    if [ ! -r "$BACKUP_TO_RESTORE" ]; then
+        log "ERROR: Backup directory is not readable: $BACKUP_TO_RESTORE" "$LOG_FILE"
+        echo -e "${RED}ERROR: Backup directory is not readable: $BACKUP_TO_RESTORE${NC}"
+        echo -e "${YELLOW}   Tip: Check backup directory permissions${NC}"
+        exit 1
+    fi
+    
+    # Validate each backup file we're about to restore
+    validation_failed=false
+    for project in "${PROJECTS_TO_RESTORE[@]}"; do
+        project_file=$(find "$BACKUP_TO_RESTORE" -maxdepth 1 -type f -name "${project}_*.tar.gz" | head -1)
+        if [ -n "$project_file" ] && [ -f "$project_file" ]; then
+            # Test archive integrity
+            if ! tar -tzf "$project_file" >/dev/null 2>&1; then
+                log "ERROR: Backup file appears corrupted: $project_file" "$LOG_FILE"
+                echo -e "${RED}✗ Backup file appears corrupted: $(basename "$project_file")${NC}"
+                validation_failed=true
+            else
+                # Check for checksum file if available
+                checksum_file="${project_file}.sha256"
+                if [ -f "$checksum_file" ]; then
+                    if command -v sha256sum >/dev/null 2>&1; then
+                        expected_checksum=$(awk '{print $1}' "$checksum_file")
+                        actual_checksum=$(sha256sum "$project_file" | awk '{print $1}')
+                        if [ "$expected_checksum" != "$actual_checksum" ]; then
+                            log "ERROR: Checksum mismatch for: $project_file" "$LOG_FILE"
+                            echo -e "${RED}✗ Checksum verification failed: $(basename "$project_file")${NC}"
+                            validation_failed=true
+                        else
+                            echo -e "${GREEN}✓ Checksum verified: $(basename "$project_file")${NC}"
+                        fi
+                    fi
+                else
+                    echo -e "${YELLOW}○ No checksum file found for: $(basename "$project_file")${NC}"
+                    echo -e "${YELLOW}  Archive integrity test passed, but checksum verification unavailable${NC}"
+                fi
+            fi
+        fi
+    done
+    
+    if [ "$validation_failed" = true ]; then
+        echo -e "${RED}Backup validation failed. Some backup files appear corrupted.${NC}"
+        echo -e "${YELLOW}   Tip: Use --skip-verify to restore anyway (not recommended)${NC}"
+        if [ "$SKIP_CONFIRMATION" = false ]; then
+            read -p "Continue with restore anyway? [y/N]: " continue_restore
+            if [[ ! "$continue_restore" =~ ^[Yy]$ ]]; then
+                log "Restore cancelled due to validation failure" "$LOG_FILE"
+                exit 1
+            fi
+        else
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}✓ Backup validation passed${NC}"
+    fi
+else
+    log "Skipping backup validation (--skip-verify specified)" "$LOG_FILE"
+    echo -e "${YELLOW}⚠ Skipping backup validation (--skip-verify)${NC}"
+fi
+
 # Verify restore directory
 if [ ! -d "$RESTORE_DIR" ]; then
     log "Restore directory does not exist: $RESTORE_DIR" "$LOG_FILE"

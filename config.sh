@@ -1,9 +1,15 @@
 #!/bin/bash
 # config.sh - Configuration file for WebDev Backup Tool
 #
+# SCRIPT TYPE: Module (sourced by other scripts, not executed directly)
+# This script defines configuration variables and is sourced by other scripts.
+#
 # =====================================================================
 # CONFIGURATION VARIABLES - Modify these values to change backup behavior
 # =====================================================================
+
+# Version information
+VERSION="1.7.0"
 
 # Get the script's directory - don't modify this
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -93,4 +99,4 @@ BACKUP_DIR="$DEFAULT_BACKUP_DIR"
 # Export variables for use in other scripts
 export SCRIPT_DIR DEFAULT_SOURCE_DIRS DEFAULT_SOURCE_DIR DEFAULT_BACKUP_DIR BACKUP_DIR DEFAULT_CLOUD_PROVIDER
 export LOGS_DIR TEST_DIR DATE_FORMAT DATE BACKUP_PREFIX
-export BACKUP_HISTORY_LOG TEST_HISTORY_LOG
+export BACKUP_HISTORY_LOG TEST_HISTORY_LOG VERSION

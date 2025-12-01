@@ -29,6 +29,29 @@ A robust backup solution for web development projects that supports multiple sou
 
 ### Setup
 
+#### Automated Installation (Recommended)
+
+Run the installation script for automated setup:
+
+```bash
+git clone https://github.com/yourusername/backup-webdev.git
+cd backup-webdev
+./install.sh
+```
+
+The installation script will:
+- Check for required tools (bash, tar, gzip)
+- Check for optional tools (pigz, gnuplot, aws)
+- Make all scripts executable
+- Create necessary directories
+- Validate configuration
+- Optionally set up shell aliases
+- Optionally configure security settings
+
+#### Manual Installation
+
+If you prefer manual setup:
+
 1. Clone the repository:
 
    ```bash
@@ -164,7 +187,29 @@ The configuration is stored in `config.sh`. You can modify default settings:
 
 ## File Structure
 
-**Note:** The active scripts are located in the root directory. The `src/` directory contains an alternative organizational structure that is not currently in use. All package.json scripts and main entry points reference root-level scripts.
+**Note:** The active scripts are located in the root directory. The `src/` directory has been archived to `archive/src.legacy/`. All package.json scripts and main entry points reference root-level scripts.
+
+### Script Types
+
+Scripts are categorized as:
+
+- **Entry Point Scripts** (Executable): These are standalone scripts that can be run directly:
+  - `webdev-backup.sh` - Main launcher
+  - `backup.sh` - Core backup
+  - `restore.sh` - Restoration
+  - `quick-backup.sh` - Quick backup
+  - `cleanup.sh` - Maintenance
+  - `encryption.sh` - Encryption utilities
+  - `configure-cron.sh` - Cron setup
+  - All test scripts (`test-*.sh`, `run-*.sh`)
+
+- **Module Scripts** (Sourced): These are library scripts that provide functions to other scripts:
+  - `config.sh` - Configuration variables
+  - `utils.sh` - Utility functions
+  - `fs.sh` - Filesystem operations
+  - `ui.sh` - User interface functions
+  - `reporting.sh` - Reporting functions
+  - `error-handling.sh` - Error handling
 
 Below is a comprehensive list of all files in the project and their purposes:
 
@@ -305,14 +350,310 @@ The main menu now includes a Quick Backup option that:
 3. Provides a streamlined experience with minimal user interaction
 4. Skips verification to maximize speed and performance
 
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### Permission Errors
+
+**Problem:** Scripts fail with "Permission denied" errors.
+
+**Solutions:**
+```bash
+# Make all scripts executable
+chmod +x *.sh
+
+# Or use the provided script
+./secure-permissions.sh
+```
+
+#### Path Not Found Errors
+
+**Problem:** Scripts can't find source directories or backup destination.
+
+**Solutions:**
+1. Check your configuration:
+   ```bash
+   ./check-config.sh
+   ```
+
+2. Verify source directories exist:
+   ```bash
+   ./dirs-status.sh
+   ```
+
+3. Update `config.sh` with correct paths:
+   ```bash
+   # Edit DEFAULT_SOURCE_DIRS and DEFAULT_BACKUP_DIR
+   nano config.sh
+   ```
+
+#### Cloud Upload Failures
+
+**Problem:** Backups fail to upload to cloud storage.
+
+**Solutions:**
+1. Verify credentials are set in `secrets.sh`:
+   ```bash
+   # Copy example and add your credentials
+   cp secrets.sh.example secrets.sh
+   nano secrets.sh
+   ```
+
+2. Check AWS CLI is installed (for S3/Spaces):
+   ```bash
+   aws --version
+   # If not installed: sudo apt-get install awscli
+   ```
+
+3. Test connection manually:
+   ```bash
+   aws s3 ls  # For S3
+   ```
+
+#### Test Script Failures
+
+**Problem:** `npm run test:cron` or `npm run test:tar` fail.
+
+**Solutions:**
+1. Verify test scripts exist:
+   ```bash
+   ls -la archive/src.legacy/test/
+   ```
+
+2. Check script permissions:
+   ```bash
+   chmod +x archive/src.legacy/test/*.sh
+   ```
+
+3. Run with verbose output:
+   ```bash
+   bash -x archive/src.legacy/test/test-cron.sh
+   ```
+
+#### Backup Directory Full
+
+**Problem:** Backup fails due to insufficient disk space.
+
+**Solutions:**
+1. Check available space:
+   ```bash
+   df -h /mnt/e/backups  # Or your backup directory
+   ```
+
+2. Clean up old backups:
+   ```bash
+   ./cleanup.sh --days 30  # Remove backups older than 30 days
+   ```
+
+3. Change backup location:
+   ```bash
+   ./backup.sh --destination /path/to/larger/volume
+   ```
+
+#### Quick Backup Freezing
+
+**Problem:** Quick backup appears to hang or freeze.
+
+**Solutions:**
+1. Check if it's actually running (may take time for large projects):
+   ```bash
+   ps aux | grep backup
+   ```
+
+2. Use standard backup with progress:
+   ```bash
+   ./backup.sh  # Interactive mode shows progress
+   ```
+
+3. Check logs:
+   ```bash
+   tail -f logs/backup_history.log
+   ```
+
+#### NPM Scripts Not Working
+
+**Problem:** `npm run <script>` fails.
+
+**Solutions:**
+1. Verify script exists in package.json:
+   ```bash
+   npm run
+   ```
+
+2. Check file permissions:
+   ```bash
+   ls -la <script-name>.sh
+   chmod +x <script-name>.sh
+   ```
+
+3. Run script directly:
+   ```bash
+   ./<script-name>.sh
+   ```
+
+#### Configuration Issues
+
+**Problem:** Default configuration doesn't work for your setup.
+
+**Solutions:**
+1. Run configuration checker:
+   ```bash
+   ./check-config.sh
+   ```
+
+2. Review and update `config.sh`:
+   ```bash
+   nano config.sh
+   ```
+
+3. Test with dry-run:
+   ```bash
+   ./backup.sh --dry-run
+   ```
+
+### Getting Help
+
+If you encounter issues not covered here:
+
+1. Check the logs:
+   - `logs/backup_history.log` - Backup history
+   - `logs/failed_backups.log` - Failed backup details
+   - Individual backup logs in backup directories
+
+2. Run diagnostics:
+   ```bash
+   ./debug-backup.sh
+   ./security-audit.sh
+   ```
+
+3. Review the codebase review:
+   - See `CODEBASE_REVIEW.md` for detailed analysis
+
 ## Testing
 
-The project includes a comprehensive test suite:
+The project includes a comprehensive test suite to verify functionality and catch issues early.
 
+### Running Tests
+
+#### Run All Tests
 ```bash
-./run-all-tests.sh  # Run all tests
-./run-tests.sh --unit  # Run only unit tests
+./run-all-tests.sh
+# Or using npm:
+npm test
 ```
+
+This runs the complete test suite including:
+- Backup functionality tests
+- Configuration validation
+- File operations
+- Test environment setup
+
+#### Run Specific Test Suites
+
+**Backup Functionality:**
+```bash
+./test-backup.sh
+# Or:
+npm run test:backup
+```
+
+**Cron Configuration:**
+```bash
+npm run test:cron
+# Tests cron job setup without modifying actual crontab
+```
+
+**Tar Compatibility:**
+```bash
+npm run test:tar
+# Tests tar command compatibility across different systems
+```
+
+**Variable Testing:**
+```bash
+./test-vars.sh
+# Tests environment variables and configuration
+```
+
+#### Test Options
+
+**Quick Test (Fast):**
+```bash
+./test-backup.sh --quick
+# Runs minimal tests for faster feedback
+```
+
+**Dry Run Tests:**
+```bash
+./backup.sh --dry-run
+# Simulates backup without creating files
+```
+
+### Test Coverage
+
+The test suite covers:
+
+| Area | Coverage | Script |
+|------|----------|--------|
+| Backup Operations | Full, incremental, differential | `test-backup.sh` |
+| Configuration | Paths, directories, settings | `test-vars.sh`, `check-config.sh` |
+| Cron Setup | Job scheduling, syntax | `test-cron.sh` |
+| Tar Compatibility | Cross-system compatibility | `test-tar-compatibility.sh` |
+| File Operations | Permissions, paths, validation | Various test scripts |
+| Cloud Storage | Upload/download (if configured) | `test-backup.sh` |
+
+### Test Environment
+
+Tests use a dedicated test directory (`test/`) and test projects (`test-projects/`) to avoid affecting production data.
+
+**Test Directory Structure:**
+```
+test/
+├── test_history.log      # Test execution history
+└── test_*/               # Individual test run directories
+
+test-projects/
+├── project1/             # Sample project for testing
+└── project2/             # Additional test projects
+```
+
+### Interpreting Test Results
+
+**Success Indicators:**
+- All tests pass with exit code 0
+- No error messages in output
+- Test logs show "PASS" or "SUCCESS"
+
+**Failure Indicators:**
+- Exit code non-zero
+- Error messages in output
+- Test logs show "FAIL" or "ERROR"
+
+**Common Test Failures:**
+1. **Permission Errors:** Run `chmod +x *.sh` or `./secure-permissions.sh`
+2. **Path Issues:** Check `config.sh` and run `./check-config.sh`
+3. **Missing Dependencies:** Install required tools (tar, gzip, etc.)
+
+### Continuous Testing
+
+For development, run tests frequently:
+```bash
+# Watch mode (if available)
+./run-tests.sh --watch
+
+# Before commits
+npm test
+
+# In CI/CD pipeline
+./run-all-tests.sh
+```
+
+### Test Documentation
+
+For detailed test documentation, see:
+- `test/README.md` - Test suite documentation
+- Individual test script headers - Script-specific documentation
 
 ## NPM Scripts
 
@@ -339,6 +680,10 @@ You can also use the following npm scripts for common operations:
 | `npm run restore` | Restore from backup | `npm run restore` |
 | `npm run restore:list` | List available backups | `npm run restore:list` |
 | `npm run cron` | Configure cron jobs | `npm run cron` |
+
+## Architecture
+
+For a detailed overview of the system architecture, component relationships, and data flow, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## License
 
