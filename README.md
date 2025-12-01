@@ -69,7 +69,7 @@ Use the Quick Backup option for a streamlined experience:
 
 ```bash
 ./webdev-backup.sh
-# Then select "2) Quick Backup (Using Default Settings)"
+# Then select "1) Quick Backup (Using Default Settings)"
 ```
 
 Or directly from command line:
@@ -164,6 +164,8 @@ The configuration is stored in `config.sh`. You can modify default settings:
 
 ## File Structure
 
+**Note:** The active scripts are located in the root directory. The `src/` directory contains an alternative organizational structure that is not currently in use. All package.json scripts and main entry points reference root-level scripts.
+
 Below is a comprehensive list of all files in the project and their purposes:
 
 | Filename              | Purpose                           | Notes                                                  |
@@ -187,10 +189,15 @@ Below is a comprehensive list of all files in the project and their purposes:
 | setup-alias.sh        | Command alias setup               | Creates shell aliases for easy tool access             |
 | check-config.sh       | Configuration validator           | Verifies configuration correctness                     |
 | dirs-status.sh        | Directory status tool             | Reports on source/destination directories              |
+| quick-backup.sh       | Quick backup script               | Standalone quick backup with default settings          |
+| cleanup-backup-files.sh | Backup file organizer            | Organizes structure files and logs in backup directories |
 | run-tests.sh          | Test runner                       | Executes specific test suites                          |
 | run-all-tests.sh      | Comprehensive test suite          | Runs all tests to verify functionality                 |
 | test-backup.sh        | Backup tester                     | Tests backup functionality specifically                |
 | test-vars.sh          | Variable tester                   | Tests environment variables and configuration          |
+| update-changelog.sh   | Changelog manager                 | Updates CHANGELOG.md with git commits                   |
+| debug-backup.sh       | Debug utility                     | Debugging tool for backup operations                   |
+| set-permissions.sh    | Permission setter                 | Sets file permissions (legacy, use secure-permissions.sh) |
 
 ## Adding a New Source Directory
 
