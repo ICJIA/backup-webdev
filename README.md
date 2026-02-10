@@ -22,7 +22,7 @@ cd /path/to/backup-webdev
 alias webback='/path/to/backup-webdev/webdev-backup.sh'
 ```
 
-Use the real path to your clone (e.g. `$HOME/backup-webdev` or `/Volumes/MyDrive/backup-webdev`). Then either open a new terminal or run `source ~/.zshrc` (or `source ~/.bashrc`) and use:
+Use the real path to this cloned repo on your machine (e.g. `$HOME/backup-webdev` or `/Volumes/MyDrive/backup-webdev`). Then either open a new terminal or run `source ~/.zshrc` (or `source ~/.bashrc`) and use:
 
 ```bash
 webback
