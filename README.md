@@ -6,6 +6,30 @@
 
 A backup solution for web development projects: multiple source directories, full/incremental/differential backups, compression, integrity verification, and optional cloud (planned).
 
+## Quick Start
+
+**Run directly (from the repo):**
+
+```bash
+cd /path/to/backup-webdev
+./webdev-backup.sh          # Interactive menu
+./backup.sh --quick         # Quick backup with defaults
+```
+
+**Run from anywhere via alias** — add to `~/.bashrc` or `~/.zshrc`:
+
+```bash
+alias webback='/path/to/backup-webdev/webdev-backup.sh'
+```
+
+Use the real path to your clone (e.g. `$HOME/backup-webdev` or `/Volumes/MyDrive/backup-webdev`). Then either open a new terminal or run `source ~/.zshrc` (or `source ~/.bashrc`) and use:
+
+```bash
+webback
+```
+
+You can also run `./setup-alias.sh` from the repo to add the alias for you.
+
 ## Features
 
 - **Backup**: Multi-directory, full/incremental/differential, quick backup, compression (gzip/pigz), excludes `node_modules`
