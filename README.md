@@ -1,5 +1,9 @@
 # WebDev Backup Tool
 
+<p align="center">
+  <img src="assets/og-image.png" alt="WebDev Backup Tool" width="1200" />
+</p>
+
 A backup solution for web development projects: multiple source directories, full/incremental/differential backups, compression, integrity verification, and optional cloud (planned).
 
 ## Features
