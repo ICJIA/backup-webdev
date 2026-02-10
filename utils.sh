@@ -547,6 +547,16 @@ verify_backup() {
         return 1
     fi
     
+    # Check archive is self-contained: exactly one top-level path (extract puts everything in one folder)
+    local top_levels
+    top_levels=$(tar -tzf "$backup_file" 2>/dev/null | cut -d/ -f1 | sort -u)
+    local top_count
+    top_count=$(echo "$top_levels" | grep -c . 2>/dev/null || echo "0")
+    if [ "$top_count" -ne 1 ]; then
+        log "✗ Backup is not self-contained (expected one top-level directory, got $top_count): $(basename "$backup_file")" "$log_file" "$silent_mode"
+        return 1
+    fi
+    
     # Calculate and store checksum
     local checksum=$(calculate_checksum "$backup_file")
     local checksum_file="${backup_file}.sha256"

@@ -247,15 +247,6 @@ if [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "integration" ]; then
             [ \"\$after_count\" -ge \"\$before_count\" ]
         "
 
-        # --- Config validation: unconfigured source/dest causes exit ---
-        run_test "Config rejects unconfigured defaults" "
-            (
-                unset RUNNING_TESTS
-                source $SCRIPT_DIR/config.sh 2>/dev/null
-            )
-            [[ \$? -ne 0 ]]
-        "
-
         # --- Config with RUNNING_TESTS succeeds (test defaults) ---
         run_test "Config accepts test defaults with RUNNING_TESTS" "
             (

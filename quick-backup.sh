@@ -179,21 +179,23 @@ for project_path in "${projects[@]}"; do
     if [ "$project_basename" = "$dir_basename" ]; then
         echo "Special handling for $project_basename (same name as parent dir)" | tee -a "$LOG_FILE"
         
-        # Create a temporary directory
+        # Create a temporary directory and a top-level project dir so the archive is self-contained
         tmp_dir=$(mktemp -d)
+        tmp_project_dir="$tmp_dir/$project_name"
+        mkdir -p "$tmp_project_dir"
         
         # Run tar with timeout and show progress - using parent directory approach
         (
-            # Special approach: First copy to temp dir, then tar from there
+            # Special approach: Copy into a single top-level dir, then tar that dir (archive is self-contained)
             echo -n "Copying... " | tee -a "$LOG_FILE"
             
-            # Copy project to temp dir (excluding node_modules)
-            run_with_timeout 60 rsync -a --exclude="node_modules" "$project_path/" "$tmp_dir/" 2>> "$LOG_FILE"
+            # Copy project into tmp_project_dir (excluding node_modules)
+            run_with_timeout 60 rsync -a --exclude="node_modules" "$project_path/" "$tmp_project_dir/" 2>> "$LOG_FILE"
             
             if [ $? -eq 0 ]; then
                 echo -n "Compressing... " | tee -a "$LOG_FILE"
-                # Create tar archive from temp dir
-                run_with_timeout 300 tar -czf "$backup_file" -C "$tmp_dir" . 2>> "$LOG_FILE" &
+                # Create tar archive with one top-level directory (self-contained: extract puts all in project_name/)
+                run_with_timeout 300 tar -czf "$backup_file" -C "$tmp_dir" "$project_name" 2>> "$LOG_FILE" &
                 
                 # Get PID of tar process
                 tar_pid=$!

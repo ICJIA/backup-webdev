@@ -10,11 +10,11 @@ source "$SCRIPT_DIR/ui.sh"
 source "$SCRIPT_DIR/fs.sh"  # Contains find_projects and file operations
 source "$SCRIPT_DIR/reporting.sh"
 
-# Default values
+# Default values (verification default comes from config.sh DEFAULT_VERIFY_BACKUP)
 SILENT_MODE=false
 INCREMENTAL_BACKUP=false
 DIFFERENTIAL_BACKUP=false
-VERIFY_BACKUP=false  # Verification disabled by default for faster backups
+VERIFY_BACKUP="${DEFAULT_VERIFY_BACKUP:-true}"
 THOROUGH_VERIFY=false
 COMPRESSION_LEVEL=6
 EMAIL_NOTIFICATION=""
@@ -25,6 +25,7 @@ CUSTOM_BACKUP_DIR=""
 CUSTOM_SOURCE_DIRS=()
 DRY_RUN=false
 EXTERNAL_BACKUP=false  # Track if this is an external (cloud) backup
+QUICK_BACKUP=false     # --quick: same as silent but show per-folder progress like interactive
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -35,8 +36,8 @@ while [[ $# -gt 0 ]]; do
             ;;
         --quick)
             SILENT_MODE=true
-            VERIFY_BACKUP=false  # Disable verification for speed
-            # Use all default settings from config.sh
+            QUICK_BACKUP=true
+            # Verification is left as config default unless --verify/--no-verify is also passed
             shift
             ;;
         --incremental)
@@ -164,6 +165,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Show dashboard and per-folder status when interactive, or when --quick (so actual backup looks like dry-run)
+SHOW_PROGRESS=false
+if [ "$SILENT_MODE" = false ] || [ "$QUICK_BACKUP" = true ]; then
+    SHOW_PROGRESS=true
+fi
+
 # Set source directories (use custom if provided, otherwise default)
 SOURCE_DIRS=()
 if [ ${#CUSTOM_SOURCE_DIRS[@]} -gt 0 ]; then
@@ -193,10 +200,30 @@ if [ -n "$CUSTOM_BACKUP_DIR" ]; then
     BACKUP_DIR="$CUSTOM_BACKUP_DIR"
 fi
 
-# Verify backup directory and create if needed
-if ! verify_directory "$BACKUP_DIR" "Backup destination" true; then
-    echo "No files were backed up. Please check directory permissions."
-    exit 1
+# Verify backup directory. In dry-run we must not create or write anything.
+if [ "$DRY_RUN" = true ]; then
+    if [ -d "$BACKUP_DIR" ]; then
+        if [ ! -w "$BACKUP_DIR" ]; then
+            echo -e "${RED}ERROR: Backup destination directory is not writable: $BACKUP_DIR${NC}"
+            exit 1
+        fi
+    else
+        parent=$(dirname "$BACKUP_DIR")
+        if [ ! -d "$parent" ]; then
+            echo -e "${RED}ERROR: Parent of backup destination does not exist: $parent${NC}"
+            echo "No files were backed up. For dry-run the destination path need not exist, but its parent must."
+            exit 1
+        fi
+        if [ ! -w "$parent" ]; then
+            echo -e "${RED}ERROR: Parent of backup destination is not writable: $parent${NC}"
+            exit 1
+        fi
+    fi
+else
+    if ! verify_directory "$BACKUP_DIR" "Backup destination" true; then
+        echo "No files were backed up. Please check directory permissions."
+        exit 1
+    fi
 fi
 
 # Set backup type string for reporting
@@ -363,8 +390,8 @@ done < "$EXCLUDE_FILE"
 # Prepare for backup
 log "Starting backup process..." "$LOG_FILE" "$SILENT_MODE"
 
-# Initialize dashboard in interactive mode
-if [ "$SILENT_MODE" = false ]; then
+# Initialize dashboard when showing progress (interactive or --quick)
+if [ "$SHOW_PROGRESS" = true ]; then
     print_dashboard_header
     # Add a note about compression and backup type
     echo -e "Backup Type: $(capitalize "$BACKUP_TYPE")"
@@ -387,19 +414,30 @@ if [ "$SILENT_MODE" = false ]; then
     
     echo -e "Note: Each project's node_modules directory will be excluded"
     
-    # Ask about verification if not already set via command line
+    # Ask about verification if not already set via command line (default from config)
     if [ "$SILENT_MODE" = false ] && [[ ! "$*" == *"--verify"* ]] && [[ ! "$*" == *"--no-verify"* ]] && [[ ! "$*" == *"--thorough-verify"* ]]; then
         echo ""
         echo -e "${CYAN}Backup Verification:${NC}"
-        echo -e "  Verification is ${YELLOW}DISABLED${NC} by default (for faster backups)"
-        echo -e "  Each .tar.gz file can be verified after compression for safety"
-        read -p "  Enable verification? [y/N]: " verify_choice
-        if [[ "$verify_choice" =~ ^[Yy]$ ]]; then
-            VERIFY_BACKUP=true
-            echo -e "  ${GREEN}Verification enabled${NC}"
+        if [ "${DEFAULT_VERIFY_BACKUP}" = true ]; then
+            echo -e "  Verification is ${GREEN}ON${NC} by default (recommended)"
+            read -p "  Enable verification? [Y/n]: " verify_choice
+            if [[ "$verify_choice" =~ ^[Nn]$ ]]; then
+                VERIFY_BACKUP=false
+                echo -e "  ${YELLOW}Verification disabled for this run${NC}"
+            else
+                VERIFY_BACKUP=true
+                echo -e "  ${GREEN}Verification enabled${NC}"
+            fi
         else
-            VERIFY_BACKUP=false
-            echo -e "  ${YELLOW}Verification disabled for faster backups${NC}"
+            echo -e "  Verification is ${YELLOW}OFF${NC} by default (faster backups)"
+            read -p "  Enable verification? [y/N]: " verify_choice
+            if [[ "$verify_choice" =~ ^[Yy]$ ]]; then
+                VERIFY_BACKUP=true
+                echo -e "  ${GREEN}Verification enabled${NC}"
+            else
+                VERIFY_BACKUP=false
+                echo -e "  ${YELLOW}Verification disabled${NC}"
+            fi
         fi
     elif [ "$VERIFY_BACKUP" = true ]; then
         echo -e "${GREEN}Backup verification will be performed after completion${NC}"
@@ -421,21 +459,22 @@ if [ "$SILENT_MODE" = false ]; then
     METADATA_FILE="$FULL_BACKUP_PATH/backup_metadata.json"
 fi
 
-# Create backup directory (after verification prompt if interactive)
-if ! mkdir -p "$FULL_BACKUP_PATH"; then
-    echo -e "${RED}ERROR: Failed to create backup directory: $FULL_BACKUP_PATH${NC}"
-    echo "No files were backed up. Please check directory permissions."
-    exit 1
-fi
-
-# Create necessary files
-for file in "$LOG_FILE" "$STATS_FILE" "$METADATA_FILE"; do
-    if ! touch "$file"; then
-        echo -e "${RED}ERROR: Failed to create file: $file${NC}"
-        echo "No files were backed up. The filesystem may be read-only or full."
+# Create backup directory and files only when not in dry-run (dry-run must not write anything)
+if [ "$DRY_RUN" != true ]; then
+    if ! mkdir -p "$FULL_BACKUP_PATH"; then
+        echo -e "${RED}ERROR: Failed to create backup directory: $FULL_BACKUP_PATH${NC}"
+        echo "No files were backed up. Please check directory permissions."
         exit 1
     fi
-done
+
+    for file in "$LOG_FILE" "$STATS_FILE" "$METADATA_FILE"; do
+        if ! touch "$file"; then
+            echo -e "${RED}ERROR: Failed to create file: $file${NC}"
+            echo "No files were backed up. The filesystem may be read-only or full."
+            exit 1
+        fi
+    done
+fi
 
 # Track total sizes
 TOTAL_SRC_SIZE=0
@@ -469,16 +508,17 @@ for project_path in "${projects[@]}"; do
     
     log "Processing project: $project (Size: $FORMATTED_SRC_SIZE)" "$LOG_FILE" "$SILENT_MODE"
     
-    if [ "$SILENT_MODE" = false ]; then
+    if [ "$SHOW_PROGRESS" = true ]; then
         print_dashboard_row "$project" "$FORMATTED_SRC_SIZE" "COMPRESSING..."
     fi
     
-    # Determine backup type and execute
+    # Determine backup type and execute (with live spinner when showing progress)
+    SPIN_PID=""
     if [ "$DRY_RUN" = true ]; then
         # Simulate backup for dry run
         log "DRY RUN: Would create backup of $project to $PROJECT_BACKUP_FILE" "$LOG_FILE" "$SILENT_MODE"
         
-        if [ "$SILENT_MODE" = false ]; then
+        if [ "$SHOW_PROGRESS" = true ]; then
             echo -e "${YELLOW}DRY RUN: Would create backup of $project (Size: $FORMATTED_SRC_SIZE)${NC}"
         fi
         
@@ -493,7 +533,10 @@ for project_path in "${projects[@]}"; do
         mkdir -p "$SNAPSHOT_DIR"
         SNAPSHOT_FILE="$SNAPSHOT_DIR/${project}_snapshot.snar"
         
-        # Create incremental backup
+        if [ "$SHOW_PROGRESS" = true ] && [ "$SILENT_MODE" = true ]; then
+            ( spinner_loop "$project" "$FORMATTED_SRC_SIZE" "COMPRESSING" ) &
+            SPIN_PID=$!
+        fi
         if create_incremental_backup \
             "$(dirname "$project_path")" \
             "$project" \
@@ -505,13 +548,17 @@ for project_path in "${projects[@]}"; do
         else
             success=false
         fi
+        if [ -n "$SPIN_PID" ]; then stop_backup_spinner "$SPIN_PID"; fi
     elif [ "$DIFFERENTIAL_BACKUP" = true ]; then
         # Find the base snapshot if any
         SNAPSHOT_DIR="$BACKUP_DIR/snapshots"
         mkdir -p "$SNAPSHOT_DIR"
         BASE_SNAPSHOT="$SNAPSHOT_DIR/${project}_base_snapshot.snar"
         
-        # Create differential backup
+        if [ "$SHOW_PROGRESS" = true ] && [ "$SILENT_MODE" = true ]; then
+            ( spinner_loop "$project" "$FORMATTED_SRC_SIZE" "COMPRESSING" ) &
+            SPIN_PID=$!
+        fi
         if create_differential_backup \
             "$(dirname "$project_path")" \
             "$project" \
@@ -523,8 +570,13 @@ for project_path in "${projects[@]}"; do
         else
             success=false
         fi
+        if [ -n "$SPIN_PID" ]; then stop_backup_spinner "$SPIN_PID"; fi
     else
-        # Create standard full backup
+        # Create standard full backup (spinner only when silent—interactive uses monitor_file_progress in fs.sh)
+        if [ "$SHOW_PROGRESS" = true ] && [ "$SILENT_MODE" = true ]; then
+            ( spinner_loop "$project" "$FORMATTED_SRC_SIZE" "COMPRESSING" ) &
+            SPIN_PID=$!
+        fi
         if create_backup_archive \
             "$(dirname "$project_path")" \
             "$project" \
@@ -538,6 +590,7 @@ for project_path in "${projects[@]}"; do
         else
             success=false
         fi
+        if [ -n "$SPIN_PID" ]; then stop_backup_spinner "$SPIN_PID"; fi
     fi
     
     # Process the result
@@ -558,6 +611,8 @@ for project_path in "${projects[@]}"; do
         
         log "Project $project backed up successfully (Compressed: $FORMATTED_ARCHIVE_SIZE, Ratio: ${RATIO}x)" "$LOG_FILE" "$SILENT_MODE"
         
+        # Generate structure file, stats, verification, and cloud upload only when not in dry-run
+        if [ "$DRY_RUN" != true ]; then
         # Generate ASCII file structure for the project
         # Store structure files inside the backup folder, not in root backup directory
         PROJECT_STRUCTURE_FILE="${FULL_BACKUP_PATH}/${project}_structure.txt"
@@ -623,32 +678,37 @@ for project_path in "${projects[@]}"; do
         if [ "$VERIFY_BACKUP" = true ]; then
             # Start verification with appropriate level of checking
             log "Starting backup verification for $project" "$LOG_FILE" "$SILENT_MODE"
-            if [ "$SILENT_MODE" = false ]; then
+            VERIFY_SPIN_PID=""
+            if [ "$SHOW_PROGRESS" = true ]; then
                 printf "\033[1A"
                 print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "VERIFYING..."
+                ( spinner_loop "$project" "$FORMATTED_ARCHIVE_SIZE" "VERIFYING" ) &
+                VERIFY_SPIN_PID=$!
             fi
             
             # If thorough verification was requested, we'll do a more comprehensive check
             if verify_backup "$PROJECT_BACKUP_FILE" "$LOG_FILE" "$SILENT_MODE" "$THOROUGH_VERIFY"; then
+                if [ -n "$VERIFY_SPIN_PID" ]; then stop_backup_spinner "$VERIFY_SPIN_PID"; fi
                 if [ "$THOROUGH_VERIFY" = true ]; then
                     log "Thorough backup verification passed for $project" "$LOG_FILE" "$SILENT_MODE"
                     
-                    if [ "$SILENT_MODE" = false ]; then
+                    if [ "$SHOW_PROGRESS" = true ]; then
                         printf "\033[1A"
                         print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "✓ FULLY VERIFIED (${RATIO}x)"
                     fi
                 else
                     log "Backup verification passed for $project" "$LOG_FILE" "$SILENT_MODE"
                     
-                    if [ "$SILENT_MODE" = false ]; then
+                    if [ "$SHOW_PROGRESS" = true ]; then
                         printf "\033[1A"
                         print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "✓ VERIFIED (${RATIO}x)"
                     fi
                 fi
             else
+                if [ -n "$VERIFY_SPIN_PID" ]; then stop_backup_spinner "$VERIFY_SPIN_PID"; fi
                 log "Backup verification FAILED for $project" "$LOG_FILE" "$SILENT_MODE"
                 
-                if [ "$SILENT_MODE" = false ]; then
+                if [ "$SHOW_PROGRESS" = true ]; then
                     printf "\033[1A"
                     print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "⚠ VERIFY FAILED"
                 fi
@@ -656,33 +716,39 @@ for project_path in "${projects[@]}"; do
                 FAILED_PROJECTS=$((FAILED_PROJECTS + 1))
                 continue
             fi
-        elif [ "$SILENT_MODE" = false ]; then
+        elif [ "$SHOW_PROGRESS" = true ]; then
             printf "\033[1A"
             print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "✓ DONE (${RATIO}x)"
         fi
         
         # Upload to cloud if requested
         if [ -n "$CLOUD_PROVIDER" ]; then
-            if [ "$SILENT_MODE" = false ]; then
+            UPLOAD_SPIN_PID=""
+            if [ "$SHOW_PROGRESS" = true ]; then
                 printf "\033[1A"
                 print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "UPLOADING..."
+                ( spinner_loop "$project" "$FORMATTED_ARCHIVE_SIZE" "UPLOADING" ) &
+                UPLOAD_SPIN_PID=$!
             fi
             
             if upload_to_cloud "$PROJECT_BACKUP_FILE" "$CLOUD_PROVIDER" "$LOG_FILE" "$BANDWIDTH_LIMIT" "$SILENT_MODE"; then
+                if [ -n "$UPLOAD_SPIN_PID" ]; then stop_backup_spinner "$UPLOAD_SPIN_PID"; fi
                 log "Project $project uploaded to $CLOUD_PROVIDER" "$LOG_FILE" "$SILENT_MODE"
                 
-                if [ "$SILENT_MODE" = false ]; then
+                if [ "$SHOW_PROGRESS" = true ]; then
                     printf "\033[1A"
                     print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "✓ UPLOADED (${RATIO}x)"
                 fi
             else
+                if [ -n "$UPLOAD_SPIN_PID" ]; then stop_backup_spinner "$UPLOAD_SPIN_PID"; fi
                 log "Failed to upload project $project to $CLOUD_PROVIDER" "$LOG_FILE" "$SILENT_MODE"
                 
-                if [ "$SILENT_MODE" = false ]; then
+                if [ "$SHOW_PROGRESS" = true ]; then
                     printf "\033[1A"
                     print_dashboard_row "$project" "$FORMATTED_ARCHIVE_SIZE" "⚠ UPLOAD FAILED"
                 fi
             fi
+        fi
         fi
         
         SUCCESSFUL_PROJECTS=$((SUCCESSFUL_PROJECTS + 1))
@@ -691,7 +757,7 @@ for project_path in "${projects[@]}"; do
         local error_details="Failed to back up project: $project (Path: $PROJECT_BACKUP_FILE)"
         log "$error_details" "$LOG_FILE" "$SILENT_MODE"
         
-        if [ "$SILENT_MODE" = false ]; then
+        if [ "$SHOW_PROGRESS" = true ]; then
             printf "\033[1A"
             print_dashboard_row "$project" "$FORMATTED_SRC_SIZE" "❌ FAILED"
             # Show error details for interactive mode
@@ -699,14 +765,16 @@ for project_path in "${projects[@]}"; do
             echo -e "${YELLOW}File: $PROJECT_BACKUP_FILE${NC}"
         fi
         
-        # Create a record of failed backups for easier troubleshooting
-        local failed_log="${LOGS_DIR}/failed_backups.log"
-        mkdir -p "$(dirname "$failed_log")"
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - FAILED BACKUP: $project" >> "$failed_log"
-        echo "  Source: $PROJECT_SRC_PATH" >> "$failed_log"
-        echo "  Target: $PROJECT_BACKUP_FILE" >> "$failed_log"
-        echo "  Backup Time: $(date)" >> "$failed_log"
-        echo "--------------------------------------------------" >> "$failed_log"
+        # Create a record of failed backups for easier troubleshooting (skip in dry-run)
+        if [ "$DRY_RUN" != true ]; then
+            local failed_log="${LOGS_DIR}/failed_backups.log"
+            mkdir -p "$(dirname "$failed_log")"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') - FAILED BACKUP: $project" >> "$failed_log"
+            echo "  Source: $PROJECT_SRC_PATH" >> "$failed_log"
+            echo "  Target: $PROJECT_BACKUP_FILE" >> "$failed_log"
+            echo "  Backup Time: $(date)" >> "$failed_log"
+            echo "--------------------------------------------------" >> "$failed_log"
+        fi
         
         FAILED_PROJECTS=$((FAILED_PROJECTS + 1))
     fi
@@ -726,7 +794,8 @@ DURATION_FORMATTED=$(printf "%02d:%02d:%02d" $((DURATION_SECONDS/3600)) $((DURAT
 # Format total size
 TOTAL_FORMATTED_SIZE=$(format_size "$TOTAL_BACKUP_SIZE")
 
-# Create metadata file
+# Create metadata file only when not in dry-run
+if [ "$DRY_RUN" != true ]; then
 cat > "$METADATA_FILE" << EOF
 {
   "backup_type": "$BACKUP_TYPE",
@@ -749,14 +818,15 @@ cat > "$METADATA_FILE" << EOF
   "dry_run": $DRY_RUN
 }
 EOF
+fi
 
-# Display summary in interactive mode
-if [ "$SILENT_MODE" = false ]; then
+# Display summary when showing progress (interactive or --quick)
+if [ "$SHOW_PROGRESS" = true ]; then
     print_dashboard_footer "$TOTAL_FORMATTED_SIZE"
     
-    # Calculate overall ratio
+    # Calculate overall ratio (use awk -v for macOS BSD awk compatibility)
     if [ "$TOTAL_BACKUP_SIZE" -gt 0 ] && [ "$TOTAL_SRC_SIZE" -gt 0 ]; then
-        OVERALL_RATIO=$(awk "BEGIN {printf \"%.1f\", ($TOTAL_SRC_SIZE/$TOTAL_BACKUP_SIZE)}")
+        OVERALL_RATIO=$(awk -v s="$TOTAL_SRC_SIZE" -v b="$TOTAL_BACKUP_SIZE" 'BEGIN { printf "%.1f", s/b }')
     else
         OVERALL_RATIO="1.0"
     fi
@@ -797,8 +867,8 @@ if [ "$SILENT_MODE" = false ]; then
     echo -e "${YELLOW}=============================================${NC}"
 fi
 
-# Generate HTML report
-if [ "$SILENT_MODE" = false ] || [ -n "$EMAIL_NOTIFICATION" ]; then
+# Generate HTML report (skip in dry-run)
+if [ "$DRY_RUN" != true ] && { [ "$SILENT_MODE" = false ] || [ -n "$EMAIL_NOTIFICATION" ]; }; then
     REPORT_FILE=$(create_backup_report \
         "$FULL_BACKUP_PATH" \
         "$SUCCESSFUL_PROJECTS" \
@@ -814,8 +884,8 @@ if [ "$SILENT_MODE" = false ] || [ -n "$EMAIL_NOTIFICATION" ]; then
     fi
 fi
 
-# Send email notification if requested
-if [ -n "$EMAIL_NOTIFICATION" ]; then
+# Send email notification if requested (skip in dry-run)
+if [ "$DRY_RUN" != true ] && [ -n "$EMAIL_NOTIFICATION" ]; then
     log "Sending email notification to $EMAIL_NOTIFICATION" "$LOG_FILE" "$SILENT_MODE"
     
     EMAIL_SUBJECT="WebDev Backup Report - $BACKUP_TYPE backup $(date '+%Y-%m-%d')"
@@ -842,8 +912,8 @@ if [ -n "$EMAIL_NOTIFICATION" ]; then
     fi
 fi
 
-# Generate backup history chart
-if [ "$SILENT_MODE" = false ]; then
+# Generate backup history chart (skip in dry-run)
+if [ "$DRY_RUN" != true ] && [ "$SILENT_MODE" = false ]; then
     if command -v gnuplot >/dev/null 2>&1; then
         HISTORY_CHART=$(generate_history_chart "$BACKUP_HISTORY_LOG" "$FULL_BACKUP_PATH/backup_history_chart.png" 10)
         if [ -n "$HISTORY_CHART" ]; then
@@ -852,8 +922,8 @@ if [ "$SILENT_MODE" = false ]; then
     fi
 fi
 
-# Update dashboard if not in silent mode
-if [ "$SILENT_MODE" = false ] && command -v gnuplot >/dev/null 2>&1; then
+# Update dashboard if not in silent mode (skip in dry-run)
+if [ "$DRY_RUN" != true ] && [ "$SILENT_MODE" = false ] && command -v gnuplot >/dev/null 2>&1; then
     DASHBOARD_FILE=$(create_visual_dashboard "$FULL_BACKUP_PATH" "$BACKUP_HISTORY_LOG")
     if [ -n "$DASHBOARD_FILE" ]; then
         echo -e "Visual dashboard available at: $DASHBOARD_FILE"
@@ -863,21 +933,17 @@ fi
 # Cleanup
 rm -f "$EXCLUDE_FILE"
 
-# Clean up any structure files or other files that might be in the root backup directory
-# These should only exist inside the dated backup folders
-if [ -d "$BACKUP_DIR" ]; then
-    # Remove any structure files from root backup directory (they should be in backup folders)
+# Clean up any structure files or other files in backup directory (skip in dry-run; we didn't create anything)
+if [ "$DRY_RUN" != true ] && [ -d "$BACKUP_DIR" ]; then
     find "$BACKUP_DIR" -maxdepth 1 -name "*_structure.txt" -type f -delete 2>/dev/null
-    
-    # Remove any structures directory from root backup directory (should be in backup folders)
     if [ -d "$BACKUP_DIR/structures" ]; then
         rm -rf "$BACKUP_DIR/structures" 2>/dev/null
     fi
-    
-    # Remove any other text files that might be in root (keep only dated backup folders)
     find "$BACKUP_DIR" -maxdepth 1 -type f \( -name "*.txt" -o -name "*.log" -o -name "*.json" \) ! -name ".*" -delete 2>/dev/null
 fi
 
+# Add backup record to history log only when not in dry-run
+if [ "$DRY_RUN" != true ]; then
 # Create logs directory if it doesn't exist
 mkdir -p "$(dirname "$BACKUP_HISTORY_LOG")"
 
@@ -926,9 +992,10 @@ else
 fi
 
 log "Backup record added to history log at $BACKUP_HISTORY_LOG" "$LOG_FILE" "$SILENT_MODE"
+fi
 
-# Final status for silent mode
-if [ "$SILENT_MODE" = true ]; then
+# Final status when no progress was shown (silent, not --quick)
+if [ "$SILENT_MODE" = true ] && [ "$SHOW_PROGRESS" = false ]; then
     if [ "$DRY_RUN" = true ]; then
         echo "DRY RUN COMPLETED: Would backup $SUCCESSFUL_PROJECTS projects, Estimated size $TOTAL_FORMATTED_SIZE"
         echo "Source: ${SOURCE_DIRS[*]}"

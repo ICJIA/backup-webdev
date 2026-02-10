@@ -12,6 +12,26 @@ source "$SCRIPT_DIR/reporting.sh"
 # Get passed arguments to forward to other scripts if needed
 ARGS="$@"
 
+# Check if list-log or list-log-errors is requested - run list-logs script and exit
+if [[ "$*" == *"--list-log-errors"* ]]; then
+    list_args=()
+    for a in "$@"; do
+        if [[ "$a" == "--list-log-errors" ]]; then
+            list_args+=("--errors")
+        elif [[ "$a" != "--list-log" ]]; then
+            list_args+=("$a")
+        fi
+    done
+    exec "$SCRIPT_DIR/list-logs.sh" "${list_args[@]}"
+fi
+if [[ "$*" == *"--list-log"* ]]; then
+    list_args=()
+    for a in "$@"; do
+        [[ "$a" != "--list-log" ]] && list_args+=("$a")
+    done
+    exec "$SCRIPT_DIR/list-logs.sh" "${list_args[@]}"
+fi
+
 # Check if silent mode or dry-run is requested - pass through to backup script
 if [[ "$*" == *"--silent"* ]] || [[ "$*" == *"--dry-run"* ]]; then
     # Skip menu in silent/dry-run mode and directly run backup
@@ -81,8 +101,9 @@ echo "0) Advanced Options"
 echo "q) Quit"
 echo
 
-# Get user choice
-read -p "Enter your choice [0-9/m/q]: " choice
+# Get user choice (default: 1 = Quick Backup)
+read -p "Enter your choice [1]: " choice
+choice="${choice:-1}"
 
 case "$choice" in
     1)
@@ -96,10 +117,25 @@ case "$choice" in
         echo -e "  Destination: ${DEFAULT_BACKUP_DIR}"
         echo -e "  Type: Full backup"
         echo -e "  Compression: Default level (6)"
-        echo -e "  Verification: Disabled (for speed)"
+        if [ "${DEFAULT_VERIFY_BACKUP:-true}" = true ]; then
+            echo -e "  Verification: On (config default)"
+            read -p "  Enable verification? [Y/n]: " verify_choice
+            if [[ "$verify_choice" =~ ^[Nn]$ ]]; then
+                QUICK_VERIFY_FLAG="--no-verify"
+            else
+                QUICK_VERIFY_FLAG="--verify"
+            fi
+        else
+            echo -e "  Verification: Off (config default)"
+            read -p "  Enable verification? [y/N]: " verify_choice
+            if [[ "$verify_choice" =~ ^[Yy]$ ]]; then
+                QUICK_VERIFY_FLAG="--verify"
+            else
+                QUICK_VERIFY_FLAG="--no-verify"
+            fi
+        fi
         echo -e "  Projects: All projects in source directories"
         echo
-        # Prompt with default Yes
         read -p "Start backup now? [Y/n] " confirm
         if [[ "$confirm" =~ ^[Nn]$ ]]; then
             echo -e "${YELLOW}Quick backup cancelled.${NC}"
@@ -108,8 +144,7 @@ case "$choice" in
         else
             echo -e "\n${GREEN}Starting quick backup...${NC}\n"
             sleep 1
-            # Use the dedicated quick-backup.sh script instead of backup.sh with --quick
-            "$SCRIPT_DIR/quick-backup.sh"
+            "$SCRIPT_DIR/backup.sh" --quick $QUICK_VERIFY_FLAG
         fi
         ;;
     2)

@@ -66,7 +66,7 @@
 #
 #   Configure at least one source (replace with your own paths):
 #
-DEFAULT_SOURCE_DIRS=()
+DEFAULT_SOURCE_DIRS=("/Volumes/satechi/webdev")
 
 
 #
@@ -115,7 +115,7 @@ DEFAULT_SOURCE_DIRS=()
 #
 #   Configure your destination (replace with your own path):
 #
-DEFAULT_BACKUP_DIR=""
+DEFAULT_BACKUP_DIR="/volumes/macssd/backups"
 
 
 #
@@ -123,6 +123,20 @@ DEFAULT_BACKUP_DIR=""
 #   Leave blank for now. Cloud backup will be supported in a future release.
 #
 DEFAULT_CLOUD_PROVIDER=""
+
+
+#
+#   BACKUP VERIFICATION (recommended: on)
+#   --------------------------------------
+#   After each archive is created, the backup can be verified for integrity.
+#   "true" = verification on by default (recommended).
+#   "false" = verification off by default (faster; use for quick backups if desired).
+#
+#   When running interactively (including Quick Backup), you are always asked
+#   whether to enable or disable verification; this setting is the default
+#   for that prompt (e.g. [Y/n] when true, [y/N] when false).
+#
+DEFAULT_VERIFY_BACKUP=true
 
 
 # ==================================================================================
@@ -219,6 +233,6 @@ BACKUP_HISTORY_LOG="$LOGS_DIR/backup_history.log"
 TEST_HISTORY_LOG="$TEST_DIR/test_history.log"
 BACKUP_DIR="$DEFAULT_BACKUP_DIR"
 
-export SCRIPT_DIR DEFAULT_SOURCE_DIRS DEFAULT_SOURCE_DIR DEFAULT_BACKUP_DIR BACKUP_DIR DEFAULT_CLOUD_PROVIDER
+export SCRIPT_DIR DEFAULT_SOURCE_DIRS DEFAULT_SOURCE_DIR DEFAULT_BACKUP_DIR BACKUP_DIR DEFAULT_CLOUD_PROVIDER DEFAULT_VERIFY_BACKUP
 export LOGS_DIR TEST_DIR DATE_FORMAT DATE BACKUP_PREFIX
 export BACKUP_HISTORY_LOG TEST_HISTORY_LOG VERSION FIRST_RUN_MARKER

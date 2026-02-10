@@ -30,6 +30,30 @@ print_dashboard_footer() {
     printf "+------------------------------------------------------------------------------+\n"
 }
 
+# Spinner loop for long-running steps (compressing, verifying, uploading).
+# Runs until killed. Call in subshell: ( spinner_loop "project" "1.2 MB" "COMPRESSING" ) &
+# Uses same column widths as print_dashboard_row so the line updates in place.
+spinner_loop() {
+    local project="${1:-}"
+    local size="${2:-}"
+    local phase="${3:-}"
+    local c
+    while true; do
+        for c in '|' '/' '-' '\'; do
+            printf '| %-40.40s | %-10.10s | %-20s |\r' "$project" "$size" "$phase $c"
+            sleep 0.12
+        done
+    done
+}
+
+# Stop spinner and clear the spinner line so the next dashboard row overwrites cleanly.
+stop_backup_spinner() {
+    local pid="$1"
+    kill "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+    printf '\r%80s\r' ''
+}
+
 # Show help text for backup script
 show_backup_help() {
     echo "WebDev Backup Tool"
@@ -38,11 +62,11 @@ show_backup_help() {
     echo ""
     echo "Options:"
     echo "  --silent                   Run in silent mode (no user interaction, for cron jobs)"
-    echo "  --quick                    Run a Quick Backup with default settings (verification disabled for speed)"
+    echo "  --quick                    Run a Quick Backup with default settings (verification: config default)"
     echo "  --incremental              Only backup files changed since last backup"
     echo "  --differential             Only backup files changed since last full backup"
-    echo "  --verify                   Verify backup integrity after completion (optional, disabled by default)"
-    echo "  --no-verify                Disable backup verification for faster backups (default)"
+    echo "  --verify                   Verify backup integrity after completion (default: see config.sh DEFAULT_VERIFY_BACKUP)"
+    echo "  --no-verify                Disable backup verification for this run"
     echo "  --thorough-verify          Perform comprehensive integrity verification (includes extraction tests)"
     echo "  --compression LEVEL        Set compression level (1-9, default: 6)"
     echo "  --email EMAIL              Send notification email to specified address"
@@ -51,6 +75,8 @@ show_backup_help() {
     echo "  --bandwidth LIMIT          Limit bandwidth usage in KB/s"
     echo "  --parallel NUM             Use parallel compression with NUM threads"
     echo "  --dry-run                  Simulate backup without making any changes"
+    echo "  --list-log                 List all log files (app + test); use with --short for paths only"
+    echo "  --list-log-errors          List only error/warning lines from log files"
     echo "  -d, --dest, --destination DIR  Set custom backup destination directory"
     echo "  -s, --source DIR           Set custom source directory to backup"
     echo "  -h, --help                 Show this help message"
@@ -62,16 +88,19 @@ show_backup_help() {
     echo "Examples:"
     echo "  $0                        # Run interactive backup with default paths"
     echo "  $0 --quick                # Run Quick Backup with default settings"
-    echo "  $0 --silent               # Run silent backup with default paths (verification disabled by default)"
+    echo "  $0 --silent               # Run silent backup with default paths (verification: config default)"
     echo "  $0 --incremental          # Only backup changed files"
-    echo "  $0 --verify               # Enable verification for safety (optional)"
-    echo "  $0 --no-verify            # Disable verification for faster backups (default)"
+    echo "  $0 --verify               # Enable verification for this run"
+    echo "  $0 --no-verify            # Disable verification for this run"
     echo "  $0 --thorough-verify      # Complete verification with extraction test"
     echo "  $0 --compression 9        # Use maximum compression"
     echo "  $0 -d /path/to/backup     # Custom destination directory"
     echo "  $0 -s /path/to/source     # Custom source directory"
     echo "  $0 --email user@example.com # Send email notification"
     echo "  $0 --parallel 4           # Use 4 threads for compression"
+    echo "  $0 --list-log             # List all log files"
+    echo "  $0 --list-log --short     # List log file paths only"
+    echo "  $0 --list-log-errors      # List only error/warning lines from logs"
     echo ""
     exit 0
 }
@@ -234,7 +263,7 @@ display_backup_summary() {
     echo "- Compressed size: $formatted_backup_size"
     
     if [ "$src_size" -gt 0 ] && [ "$backup_size" -gt 0 ]; then
-        echo "- Overall compression ratio: $(awk "BEGIN {printf \"%.1f\", ($src_size/$backup_size)}")x"
+        echo "- Overall compression ratio: $(awk -v s="$src_size" -v b="$backup_size" 'BEGIN { printf "%.1f", (b > 0 ? s/b : 0) }')x"
     fi
     
     echo "- Backup location: $location"
@@ -277,7 +306,7 @@ show_advanced_options() {
     
     echo "4) Verification Options"
     echo "   - [Y]es: Verify backup integrity after completion"
-    echo "   - [N]o: Skip verification (default)"
+    echo "   - [Y/n] or [y/N]: Use config default (DEFAULT_VERIFY_BACKUP in config.sh)"
     
     echo "5) Cloud Storage Integration"
     echo "   - [N]one: Local backup only (default)"

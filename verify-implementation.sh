@@ -119,7 +119,8 @@ fi
 echo
 
 echo -e "${CYAN}5. Checking no mapfile usage...${NC}"
-mapfile_count=$(grep -c "mapfile" "$SCRIPT_DIR/backup.sh" 2>/dev/null || echo "0")
+mapfile_count=$(grep -c "mapfile" "$SCRIPT_DIR/backup.sh" 2>/dev/null | head -1 | tr -d '\n')
+[ -z "$mapfile_count" ] || ! [[ "$mapfile_count" =~ ^[0-9]+$ ]] && mapfile_count=0
 if [ "$mapfile_count" -eq 0 ]; then
     echo -e "${GREEN}   ✓ mapfile removed from backup.sh${NC}"
 else
