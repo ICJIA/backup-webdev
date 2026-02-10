@@ -67,12 +67,18 @@ Tests run with no config (they use `test/` and `test-projects/`).
 
 ```bash
 ./run-tests.sh              # Unit + integration + security audit
-./run-tests.sh --unit       # Unit only (6 tests)
-./run-tests.sh --integration # Integration only (4 tests)
+./run-tests.sh --unit       # Unit only (32 tests)
+./run-tests.sh --integration # Integration only (10 tests)
 ./run-tests.sh --security   # Security audit only
 ```
 
-**Coverage:** Unit tests exercise helpers (`format_size`, `sanitize_input`, directory checks, `find_projects`, checksum, `verify_backup`). Integration tests run backup dry-run, full backup, and restore dry-run. The security audit checks permissions, sensitive files in git, hardcoded credentials, eval usage, and temp file handling.
+**Coverage (42 tests):**
+
+| Category | Tests | What's covered |
+|----------|-------|----------------|
+| **Unit (32)** | `format_size` (0 B through GB), `sanitize_input` (basic + strict), `validate_path` (traversal, injection, empty, relative, absolute), `detect_os`, `get_os_version_display`, `get_file_size_bytes` (file + missing), `calculate_checksum` (consistency + SHA256 length), `check_required_tools` (present + missing), `format_time` (seconds/minutes/hours), `capitalize`, `verify_directory` (exists + missing), `find_projects`, `verify_backup` (valid + corrupted archive) | Core utility functions, edge cases, and error paths |
+| **Integration (10)** | Backup dry-run, full backup, backup-file existence, node_modules exclusion, archive integrity (`verify_backup`), source-file presence in archive, restore dry-run, incremental backup, config validation (rejects unconfigured, accepts test defaults) | End-to-end backup/restore workflow and configuration |
+| **Security** | File permissions, sensitive files in git, hardcoded credentials, eval usage, temp file handling | Static analysis of common vulnerabilities |
 
 You can also run `./test-backup.sh` (with `--quick`, `--unit`, or `--integration`) or `npm test`.
 
@@ -92,15 +98,33 @@ Edit **`config.sh`**. You must set at least one **source** and one **destination
 | **Linux** | `$HOME`, `/home/user/...` | `/mnt/...`, `/media/...` |
 | **WSL2** | `$HOME` | `/mnt/c`, `/mnt/e`, etc. (no `/media/`) |
 
-First run may show **FIRST TIME SETUP** (config path and prompt). Current config is shown when you run the menu or interactive backup. Run `./check-config.sh` to validate and see OS version.
+First run may show **FIRST TIME SETUP** (config path and prompt). Current config is shown when you run the menu or interactive backup.
+
+**Verify your config with a dry run** (no data is backed up):
+
+```bash
+./backup.sh --dry-run          # From the repo directory
+./backup.sh --dry-run --silent # Same, but minimal output
+webback --dry-run              # Works with the alias too
+```
+
+All command-line options (`--dry-run`, `--silent`, `--source`, `--destination`, etc.) pass through to the alias exactly as they do when running the script directly. This validates that your source directories exist, the destination is writable, and projects are detected correctly -- all without creating any archives.
 
 ## Security
 
-1. **`./secure-permissions.sh`** – fix script/config permissions  
-2. **`./secure-secrets.sh`** – set up credential storage  
-3. **`./security-audit.sh`** – check permissions, credentials, eval, temp files (also runs with `./run-tests.sh`)
+1. **`./secure-permissions.sh`** – set strict permissions (755 scripts, 640 config, 750 dirs)
+2. **`./secure-secrets.sh`** – set up credential storage
+3. **`./security-audit.sh`** – checks permissions, sensitive files in git, hardcoded credentials, eval, temp files (also runs with `./run-tests.sh`)
 
-Use `mktemp` for temp files; the audit allowlists templates and controlled eval in test/utility scripts.
+**What's hardened:**
+- All temp files use `mktemp` (no `/tmp/` predictable paths in active code)
+- `umask 027` in utils, encryption, and setup scripts
+- Tar extraction uses `--no-same-owner` on Linux to prevent root-owned restored files
+- Archive traversal checks (absolute paths, `../`) before extraction
+- Mail credentials wiped with `shred`/`dd` after use
+- `set-permissions.sh` uses `chmod 755` (not 777)
+
+Full details: [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md)
 
 ## Scripts (root)
 
@@ -140,6 +164,7 @@ Common: `npm start`, `npm test`, `npm run backup`, `npm run backup:quick`, `npm 
 
 ## More
 
-- **Architecture:** [ARCHITECTURE.md](ARCHITECTURE.md)  
-- **Changelog:** [CHANGELOG.md](CHANGELOG.md)  
+- **Architecture:** [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Security review:** [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md)
+- **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 - **License:** MIT (see LICENSE)

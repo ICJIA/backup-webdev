@@ -119,12 +119,11 @@ find_latest_backup() {
     # Cross-platform find (supports both old wsl2_backup_* and new webdev_backup_* naming)
     if [ "$(uname -s)" = "Darwin" ]; then
         # macOS: Use find + stat instead of -printf
-        find "$backup_dir" -maxdepth 1 -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -exec stat -f "%m %N" {} \; | \
+        find "$backup_dir" -maxdepth 1 -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -exec stat -f "%m %N" {} \; | sort -nr | head -1 | cut -d' ' -f2-
     else
         # Linux: Use GNU find -printf
-        find "$backup_dir" -maxdepth 1 -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -printf "%T@ %p\n" | \
+        find "$backup_dir" -maxdepth 1 -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) -printf "%T@ %p\n" | sort -nr | head -1 | cut -d' ' -f2-
     fi
-        sort -nr | head -1 | cut -d' ' -f2-
 }
 
 # Resolve "latest" keyword
@@ -199,10 +198,6 @@ compare_file_lists() {
         # A full implementation would extract and compare file contents
         changed+="$file"$'\n'
     done <<< "$common"
-    
-    echo "$added" > /tmp/added_$$
-    echo "$deleted" > /tmp/deleted_$$
-    echo "$changed" > /tmp/changed_$$
 }
 
 # Main comparison logic

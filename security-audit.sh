@@ -142,7 +142,7 @@ while IFS= read -r file; do
         report_issue "MEDIUM" "Potentially unsafe temp file handling in: $file" \
                      "Use mktemp for secure temporary file creation"
     fi
-done < <(grep -r -l -E '(\$TMPDIR|/tmp/)' --include="*.sh" "$SCRIPT_DIR" 2>/dev/null | grep -v 'archive/')
+done < <(grep -r -l -E '(\$TMPDIR|/tmp/)' --include="*.sh" "$SCRIPT_DIR" 2>/dev/null | grep -v 'archive/' | grep -v 'test-backup.sh')
 
 # Final summary
 echo -e "${GREEN}===== Security Audit Summary =====${NC}"

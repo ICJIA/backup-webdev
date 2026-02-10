@@ -228,9 +228,16 @@ extract_backup() {
         log "Created extraction directory: $extract_dir" "$log_file"
     fi
     
+    # Build safe tar flags (--no-same-owner prevents restoring as root-owned files;
+    # macOS BSD tar doesn't support it, so only add on GNU tar / Linux)
+    local tar_safe_flags=""
+    if [ "$(uname -s)" != "Darwin" ]; then
+        tar_safe_flags="--no-same-owner"
+    fi
+
     # Extract specific path if provided, otherwise extract entire archive
     if [ -n "$specific_path" ]; then
-        if tar -xzf "$backup_file" -C "$extract_dir" "$specific_path" 2>> "$log_file"; then
+        if tar -xzf "$backup_file" $tar_safe_flags -C "$extract_dir" "$specific_path" 2>> "$log_file"; then
             log "Extracted $specific_path from $(basename "$backup_file")" "$log_file"
             return 0
         else
@@ -238,7 +245,7 @@ extract_backup() {
             return 1
         fi
     else
-        if tar -xzf "$backup_file" -C "$extract_dir" 2>> "$log_file"; then
+        if tar -xzf "$backup_file" $tar_safe_flags -C "$extract_dir" 2>> "$log_file"; then
             log "Extracted $(basename "$backup_file")" "$log_file"
             return 0
         else

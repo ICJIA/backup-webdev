@@ -122,18 +122,65 @@ if [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "unit" ]; then
     echo "UNIT TESTS" >> "$TEST_LOG"
     echo "-------------------------------------------" >> "$TEST_LOG"
     
-    # Test utility functions
-    run_test "Format size function" "result=\$(format_size 1024); [[ \"\$result\" == \"1.00 KB\" ]]"
-    run_test "Sanitize input function" "result=\$(sanitize_input 'test;rm -rf /'); [[ \"\$result\" == \"testrm -rf /\" ]]"
+    # --- format_size ---
+    run_test "Format size: 0 bytes" "result=\$(format_size 0); [[ -z \"\$result\" || \"\$result\" == \"0.00 B\" ]]"
+    run_test "Format size: 500 bytes" "result=\$(format_size 500); [[ \"\$result\" == \"500.00 B\" ]]"
+    run_test "Format size: 1 KB" "result=\$(format_size 1024); [[ \"\$result\" == \"1.00 KB\" ]]"
+    run_test "Format size: 1 MB" "result=\$(format_size 1048576); [[ \"\$result\" == \"1.00 MB\" ]]"
+    run_test "Format size: 1 GB" "result=\$(format_size 1073741824); [[ \"\$result\" == \"1.00 GB\" ]]"
+
+    # --- sanitize_input ---
+    run_test "Sanitize input: removes semicolons/pipes" "result=\$(sanitize_input 'test;rm -rf /'); [[ \"\$result\" == \"testrm -rf /\" ]]"
+    run_test "Sanitize input: empty string" "result=\$(sanitize_input ''); [[ -z \"\$result\" ]]"
+    run_test "Sanitize input strict: removes angle brackets" "result=\$(sanitize_input '<script>alert(1)</script>' 'true'); [[ \"\$result\" != *'<'* && \"\$result\" != *'>'* ]]"
+    run_test "Sanitize input strict: removes braces/brackets" "result=\$(sanitize_input '{cmd}[0]!danger' 'true'); [[ \"\$result\" != *'{'* && \"\$result\" != *'['* && \"\$result\" != *'!'* ]]"
+
+    # --- validate_path ---
+    run_test "Validate path: strips traversal" "result=\$(validate_path '../../etc/passwd' 'file'); [[ \"\$result\" != *'..'* ]]"
+    run_test "Validate path: strips injection chars" "result=\$(validate_path '/tmp/test;\$(whoami)' 'file'); [[ \"\$result\" != *';'* && \"\$result\" != *'\$('* ]]"
+    run_test "Validate path: empty returns error" "validate_path '' 'dir' 2>/dev/null; [[ \$? -ne 0 ]]"
+    run_test "Validate path: relative dir rejected" "validate_path 'relative/path' 'dir' 2>/dev/null; [[ \$? -ne 0 ]]"
+    run_test "Validate path: absolute dir accepted" "result=\$(validate_path '/tmp' 'dir'); [[ \"\$result\" == '/tmp' ]]"
+
+    # --- detect_os ---
+    run_test "Detect OS: returns known value" "result=\$(detect_os); [[ \"\$result\" == \"macOS\" || \"\$result\" == \"Linux\" || \"\$result\" == \"Windows\" || \"\$result\" == \"Unknown\" ]]"
+
+    # --- get_os_version_display ---
+    run_test "OS version display: non-empty" "result=\$(get_os_version_display); [[ -n \"\$result\" ]]"
+
+    # --- get_file_size_bytes ---
+    run_test "File size: known file" "echo 'hello' > \"$TEST_DIR/size_test.txt\" && result=\$(get_file_size_bytes \"$TEST_DIR/size_test.txt\") && [[ \"\$result\" -gt 0 ]]"
+    run_test "File size: missing file returns 0" "result=\$(get_file_size_bytes \"$TEST_DIR/nonexistent_file_xyz\") && [[ \"\$result\" == \"0\" ]]"
+
+    # --- calculate_checksum ---
+    run_test "Checksum: consistent" "echo 'checksum_test' > \"$TEST_DIR/cksum.txt\" && c1=\$(calculate_checksum \"$TEST_DIR/cksum.txt\") && c2=\$(calculate_checksum \"$TEST_DIR/cksum.txt\") && [[ \"\$c1\" == \"\$c2\" && -n \"\$c1\" ]]"
+    run_test "Checksum: 64 hex chars (SHA256)" "echo 'sha_test' > \"$TEST_DIR/sha.txt\" && result=\$(calculate_checksum \"$TEST_DIR/sha.txt\") && [[ \${#result} -eq 64 ]]"
+
+    # --- check_required_tools ---
+    run_test "Required tools: tar present" "check_required_tools tar"
+    run_test "Required tools: missing tool fails" "! check_required_tools nonexistent_tool_xyz_123"
+
+    # --- format_time ---
+    run_test "Format time: seconds" "result=\$(format_time 45); [[ \"\$result\" == \"45s\" ]]"
+    run_test "Format time: minutes" "result=\$(format_time 125); [[ \"\$result\" == \"2m 5s\" ]]"
+    run_test "Format time: hours" "result=\$(format_time 3661); [[ \"\$result\" == \"1h 1m\" ]]"
+
+    # --- capitalize ---
+    run_test "Capitalize: lowercase" "result=\$(capitalize 'hello'); [[ \"\$result\" == \"Hello\" ]]"
+
+    # --- verify_directory ---
     run_test "Directory exists check" "verify_directory \"$TEST_DIR\" \"Test\" true"
+    run_test "Directory: nonexistent fails" "! verify_directory \"$TEST_DIR/no_such_dir_xyz\" \"Missing\" false"
     
-    # Test file system functions
+    # --- find_projects ---
     run_test "Find projects function" "cd $SCRIPT_DIR && find_projects \"$TEST_DIR\" 1"
     
     if [ "$QUICK_TEST" = false ]; then
-        # More comprehensive unit tests for non-quick mode
         run_test "Calculate checksum" "calculate_checksum \"$0\""
         run_test "Verify backup" "echo 'test' > \"$TEST_DIR/test.txt\" && tar -czf \"$TEST_DIR/test.tar.gz\" -C \"$TEST_DIR\" test.txt && verify_backup \"$TEST_DIR/test.tar.gz\""
+        
+        # --- verify_backup: corrupted archive ---
+        run_test "Verify backup: corrupted archive fails" "echo 'not_a_tar' > \"$TEST_DIR/bad.tar.gz\" && ! verify_backup \"$TEST_DIR/bad.tar.gz\""
     fi
 fi
 
@@ -148,9 +195,12 @@ if [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "integration" ]; then
     echo "Setting up test project..." >> "$TEST_LOG"
     TEST_PROJECT_DIR="$TEST_DIR/test_project_$(date +%s)"
     mkdir -p "$TEST_PROJECT_DIR/project1/src"
-    mkdir -p "$TEST_PROJECT_DIR/project1/node_modules"
+    mkdir -p "$TEST_PROJECT_DIR/project1/node_modules/some-package"
+    mkdir -p "$TEST_PROJECT_DIR/project1/nested/node_modules/nested-pkg"
     echo "console.log('test');" > "$TEST_PROJECT_DIR/project1/src/app.js"
     echo "test data" > "$TEST_PROJECT_DIR/project1/README.md"
+    echo "package data" > "$TEST_PROJECT_DIR/project1/node_modules/some-package/index.js"
+    echo "nested pkg data" > "$TEST_PROJECT_DIR/project1/nested/node_modules/nested-pkg/index.js"
     dd if=/dev/zero of="$TEST_PROJECT_DIR/project1/node_modules/big_file.bin" bs=1K count=10 2>/dev/null
     
     # Test backup command with dry-run
@@ -163,8 +213,57 @@ if [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "integration" ]; then
         # Verify backup was created
         run_test "Backup file exists" "find \"$TEST_DIR/backup\" -name \"*.tar.gz\" | grep -q \".tar.gz\""
         
-        # Test restore with dry-run
+        # --- node_modules exclusion ---
+        run_test "Backup excludes node_modules" "
+            backup_file=\$(find \"$TEST_DIR/backup\" -name '*.tar.gz' | head -1)
+            if [ -n \"\$backup_file\" ]; then
+                ! tar -tzf \"\$backup_file\" 2>/dev/null | grep -q 'node_modules/'
+            else
+                false
+            fi
+        "
+
+        # --- Backup archive integrity (verify_backup) ---
+        run_test "Backup archive passes verify" "
+            backup_file=\$(find \"$TEST_DIR/backup\" -name '*.tar.gz' | head -1)
+            [ -n \"\$backup_file\" ] && verify_backup \"\$backup_file\"
+        "
+
+        # --- Backup contains expected files ---
+        run_test "Backup contains source files" "
+            backup_file=\$(find \"$TEST_DIR/backup\" -name '*.tar.gz' | head -1)
+            [ -n \"\$backup_file\" ] && tar -tzf \"\$backup_file\" 2>/dev/null | grep -q 'app.js'
+        "
+
+        # --- Extract / restore dry run ---
         run_test "Restore dry run" "$SCRIPT_DIR/restore.sh --source \"$TEST_DIR/backup\" --dry-run --yes"
+
+        # --- Incremental backup (second run creates new archive) ---
+        run_test "Incremental backup creates new archive" "
+            before_count=\$(find \"$TEST_DIR/backup\" -name '*.tar.gz' 2>/dev/null | wc -l | tr -d ' ')
+            echo 'new content' >> \"$TEST_PROJECT_DIR/project1/src/app.js\"
+            $SCRIPT_DIR/backup.sh --source \"$TEST_PROJECT_DIR\" --destination \"$TEST_DIR/backup\" --silent
+            after_count=\$(find \"$TEST_DIR/backup\" -name '*.tar.gz' 2>/dev/null | wc -l | tr -d ' ')
+            [ \"\$after_count\" -ge \"\$before_count\" ]
+        "
+
+        # --- Config validation: unconfigured source/dest causes exit ---
+        run_test "Config rejects unconfigured defaults" "
+            (
+                unset RUNNING_TESTS
+                source $SCRIPT_DIR/config.sh 2>/dev/null
+            )
+            [[ \$? -ne 0 ]]
+        "
+
+        # --- Config with RUNNING_TESTS succeeds (test defaults) ---
+        run_test "Config accepts test defaults with RUNNING_TESTS" "
+            (
+                export RUNNING_TESTS=1
+                source $SCRIPT_DIR/config.sh 2>/dev/null
+            )
+            [[ \$? -eq 0 ]]
+        "
     fi
     
     # Clean up test project

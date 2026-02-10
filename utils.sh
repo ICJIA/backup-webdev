@@ -690,17 +690,20 @@ send_email_notification() {
             rm -f "$mailrc_file" "$message_file"
         fi
     else
-        # Basic sending without authentication
-        echo "$safe_message" > /tmp/email_message_$$
-        chmod 600 /tmp/email_message_$$
+        # Basic sending without authentication (use mktemp to avoid predictable path / symlink risk)
+        local tmp_msg
+        tmp_msg=$(mktemp) || { echo "ERROR: Failed to create temp file for email" >&2; return 1; }
+        chmod 600 "$tmp_msg"
+        echo "$safe_message" > "$tmp_msg"
         
         if [[ -n "$attachment" && -f "$attachment" ]]; then
-            mail -s "$safe_subject" -a "$attachment" "$safe_recipient" < /tmp/email_message_$$
+            mail -s "$safe_subject" -a "$attachment" "$safe_recipient" < "$tmp_msg"
         else
-            mail -s "$safe_subject" "$safe_recipient" < /tmp/email_message_$$
+            mail -s "$safe_subject" "$safe_recipient" < "$tmp_msg"
         fi
-        
-        rm -f /tmp/email_message_$$
+        local mail_ret=$?
+        rm -f "$tmp_msg"
+        return $mail_ret
     fi
     
     return $?
