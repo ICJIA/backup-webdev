@@ -4,6 +4,8 @@
 
 # Get the script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Allow running without user config (utils.sh sources config.sh which validates source/dest)
+export RUNNING_TESTS=1
 source "$SCRIPT_DIR/utils.sh"
 
 # Banner
@@ -39,11 +41,11 @@ report_issue() {
 # Check file permissions
 echo -e "${GREEN}Checking file permissions...${NC}"
 
-# Check scripts for excessive permissions
-find "$SCRIPT_DIR" -name "*.sh" -perm /o+w -exec ls -l {} \; | while read -r line; do
+# Check scripts for excessive permissions (portable: -perm -0002 = world-writable; works on macOS and Linux)
+while IFS= read -r line; do
     report_issue "HIGH" "Script has world-writable permissions: $line" \
                  "Run secure-permissions.sh to fix permissions (chmod 755 for scripts)"
-done
+done < <(find "$SCRIPT_DIR" -name "*.sh" -perm -0002 -exec ls -l {} \; 2>/dev/null)
 
 # Check secrets file
 if [ -f "$SCRIPT_DIR/secrets.sh" ]; then
@@ -63,23 +65,29 @@ else
     echo -e "${YELLOW}⚠ No secrets.sh file found - skipping check${NC}"
 fi
 
-# Check for sensitive files in git
+# Check for sensitive files in git (allowlist: templates and examples are intentional)
 echo -e "${GREEN}Checking for potential sensitive files in git...${NC}"
 if command -v git &>/dev/null && [ -d "$SCRIPT_DIR/.git" ]; then
     sensitive_patterns=("*secret*" "*password*" "*credential*" "*.key" "*.pem" "*.p12" "*.pkcs12" "*.pfx")
+    # Files that are safe to track (templates/examples with no real secrets)
+    git_safe_files="secrets.sh.example|secure-secrets.sh"
     
     for pattern in "${sensitive_patterns[@]}"; do
-        git_files=$(git -C "$SCRIPT_DIR" ls-files "$pattern" 2>/dev/null)
+        git_files=$(git -C "$SCRIPT_DIR" ls-files "$pattern" 2>/dev/null | grep -v '^archive/' | grep -v -E "^($git_safe_files)$" || true)
         if [ -n "$git_files" ]; then
             report_issue "HIGH" "Potential sensitive files found in git: $git_files" \
                          "Remove sensitive files from git using: git rm --cached <file> and add to .gitignore"
         fi
     done
     
-    # Check if secrets.sh is in git
-    if git -C "$SCRIPT_DIR" ls-files secrets.sh &>/dev/null; then
-        report_issue "HIGH" "secrets.sh file is tracked by git" \
-                     "Remove secrets.sh from git using: git rm --cached secrets.sh"
+    # Check if secrets.sh is in git (only report if not in .gitignore; user may need git rm --cached)
+    if git -C "$SCRIPT_DIR" ls-files --error-unmatch secrets.sh &>/dev/null; then
+        if grep -q "secrets\.sh" "$SCRIPT_DIR/.gitignore" 2>/dev/null; then
+            echo -e "${YELLOW}ℹ secrets.sh is tracked but listed in .gitignore. To stop tracking: git rm --cached secrets.sh${NC}"
+        else
+            report_issue "HIGH" "secrets.sh file is tracked by git" \
+                         "Remove secrets.sh from git using: git rm --cached secrets.sh"
+        fi
     else
         echo -e "${GREEN}✓ secrets.sh is not tracked by git${NC}"
     fi
@@ -100,36 +108,41 @@ else
     echo -e "${YELLOW}⚠ Git not found or not a git repository - skipping git checks${NC}"
 fi
 
-# Check for cryptographic material
+# Check for cryptographic material (exclude archive)
 echo -e "${GREEN}Checking for exposed cryptographic material...${NC}"
-find "$SCRIPT_DIR" -type f -name "*.pem" -o -name "*.key" -o -name "*.p12" | while read -r file; do
+while IFS= read -r file; do
     report_issue "HIGH" "Cryptographic material found: $file" \
                  "Remove cryptographic files from the repository and store them securely"
-done
+done < <(find "$SCRIPT_DIR" -type f \( -name "*.pem" -o -name "*.key" -o -name "*.p12" \) ! -path "*/archive/*" 2>/dev/null)
 
-# Check for hardcoded credentials in scripts
+# Check for hardcoded credentials: only flag literal quoted values (exclude $VAR and empty/local placeholders)
 echo -e "${GREEN}Checking for hardcoded credentials in scripts...${NC}"
-grep -r -l -E "(password|secret|credential|token|api.?key).*=.*['\"]" --include="*.sh" "$SCRIPT_DIR" 2>/dev/null | grep -v -E '(secure-secrets.sh|secrets.sh.example)' | while read -r file; do
+# Match keyword= then a quote then a LITERAL value (no $) - avoids false positives like $EMAIL_PASSWORD or local password=""
+while IFS= read -r file; do
     report_issue "HIGH" "Potential hardcoded credentials in: $file" \
                  "Move credentials to secrets.sh and reference them as variables"
-done
+done < <(grep -r -l -E "(password|secret|credential|token|api.?key)\s*=\s*['\"][^\"'\$]+['\"]" --include="*.sh" "$SCRIPT_DIR" 2>/dev/null | grep -v -E '(archive/|secure-secrets\.sh|secrets\.sh\.example)')
 
-# Check for secure coding practices
+# Check for secure coding practices (exclude archive and allowlisted scripts)
+# Allowlist: test runners (eval of test command), security-audit (self), cleanup (single-arg callback), utils (read_lines_into_array)
+eval_allowlist="test-backup\.sh|run-all-tests\.sh|security-audit\.sh|cleanup\.sh|utils\.sh"
 echo -e "${GREEN}Checking for insecure coding practices...${NC}"
-grep -r -l "eval" --include="*.sh" "$SCRIPT_DIR" | while read -r file; do
+while IFS= read -r file; do
+    basename_file=$(basename "$file")
+    echo "$basename_file" | grep -q -E "^($eval_allowlist)$" && continue
     if grep -q "eval.*\$" "$file"; then
         report_issue "HIGH" "Potentially unsafe eval with variables found in: $file" \
                      "Replace eval with safer alternatives to prevent command injection"
     fi
-done
+done < <(grep -r -l "eval" --include="*.sh" "$SCRIPT_DIR" 2>/dev/null | grep -v 'archive/')
 
-# Check for unsafe temp file creation
-grep -r -l -E "mktemp|tempfile" --include="*.sh" "$SCRIPT_DIR" | while read -r file; do
-    if ! grep -q -E "mktemp( -d)?( -q)? | tempfile" "$file"; then
+# Check for unsafe temp file creation (exclude archive; flag /tmp or $TMPDIR usage without mktemp)
+while IFS= read -r file; do
+    if ! grep -q "mktemp" "$file"; then
         report_issue "MEDIUM" "Potentially unsafe temp file handling in: $file" \
                      "Use mktemp for secure temporary file creation"
     fi
-done
+done < <(grep -r -l -E '(\$TMPDIR|/tmp/)' --include="*.sh" "$SCRIPT_DIR" 2>/dev/null | grep -v 'archive/')
 
 # Final summary
 echo -e "${GREEN}===== Security Audit Summary =====${NC}"

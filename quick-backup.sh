@@ -44,9 +44,9 @@ find_projects_quick() {
     local dir="$1"
     echo "Searching for projects in: $dir" | tee -a "$LOG_FILE"
     
-    # Set a strict timeout to prevent hanging
+    # Set a strict timeout to prevent hanging (no-op on macOS if timeout not installed)
     # Always include .ssh directory even though it's hidden (mandatory)
-    timeout 10s find "$dir" -maxdepth 1 -mindepth 1 -type d \
+    run_with_timeout 10 find "$dir" -maxdepth 1 -mindepth 1 -type d \
         \( -name ".ssh" -o -not -path "*/\.*" \) \
         -not -path "*/node_modules*" 2>/dev/null | sort
 }
@@ -151,10 +151,10 @@ for project_path in "${projects[@]}"; do
     # Cross-platform directory size calculation
     if [ "$(uname -s)" = "Darwin" ]; then
         # macOS: Use find to exclude node_modules, then sum with awk
-        project_size=$(timeout 10s sh -c "find \"$project_path\" -type f ! -path \"*/node_modules/*\" -exec du -k {} + 2>/dev/null | awk '{sum += \$1} END {print sum * 1024}'" 2>/dev/null || echo "0")
+        project_size=$(run_with_timeout 10 sh -c "find \"$project_path\" -type f ! -path \"*/node_modules/*\" -exec du -k {} + 2>/dev/null | awk '{sum += \$1} END {print sum * 1024}'" 2>/dev/null || echo "0")
     else
         # Linux: Use du with --exclude
-        project_size=$(timeout 10s du -sb --exclude="node_modules" "$project_path" 2>/dev/null | cut -f1)
+        project_size=$(run_with_timeout 10 du -sb --exclude="node_modules" "$project_path" 2>/dev/null | cut -f1)
     fi
     
     # If size calculation times out or fails, use a default value
@@ -163,7 +163,7 @@ for project_path in "${projects[@]}"; do
         project_size=1000000  # Default size of 1MB
     fi
     
-    formatted_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $project_size 2>/dev/null || echo "$project_size bytes")
+    formatted_size=$(format_size "$project_size" 2>/dev/null || echo "$project_size bytes")
     total_src_size=$((total_src_size + project_size))
     
     echo "Project size: $formatted_size" | tee -a "$LOG_FILE"
@@ -188,12 +188,12 @@ for project_path in "${projects[@]}"; do
             echo -n "Copying... " | tee -a "$LOG_FILE"
             
             # Copy project to temp dir (excluding node_modules)
-            timeout 60s rsync -a --exclude="node_modules" "$project_path/" "$tmp_dir/" 2>> "$LOG_FILE"
+            run_with_timeout 60 rsync -a --exclude="node_modules" "$project_path/" "$tmp_dir/" 2>> "$LOG_FILE"
             
             if [ $? -eq 0 ]; then
                 echo -n "Compressing... " | tee -a "$LOG_FILE"
                 # Create tar archive from temp dir
-                timeout 300s tar -czf "$backup_file" -C "$tmp_dir" . 2>> "$LOG_FILE" &
+                run_with_timeout 300 tar -czf "$backup_file" -C "$tmp_dir" . 2>> "$LOG_FILE" &
                 
                 # Get PID of tar process
                 tar_pid=$!
@@ -225,7 +225,7 @@ for project_path in "${projects[@]}"; do
         # Run tar with timeout and show progress - normal case
         (
             # Create tar archive, excluding node_modules
-            timeout 300s tar -czf "$backup_file" --exclude="*/node_modules/*" --exclude="node_modules/*" --exclude="*/node_modules" -C "$src_dir" "$project_basename" 2>> "$LOG_FILE" &
+            run_with_timeout 300 tar -czf "$backup_file" --exclude="*/node_modules/*" --exclude="node_modules/*" --exclude="*/node_modules" -C "$src_dir" "$project_basename" 2>> "$LOG_FILE" &
             
             # Get PID of tar process
             tar_pid=$!
@@ -250,8 +250,8 @@ for project_path in "${projects[@]}"; do
     # Check tar result
     if [ $? -eq 0 ]; then
         # Get archive size
-        archive_size=$(du -sb "$backup_file" 2>/dev/null | cut -f1)
-        formatted_archive_size=$(numfmt --to=iec-i --suffix=B --format="%.1f" $archive_size 2>/dev/null || echo "$archive_size bytes")
+        archive_size=$(get_file_size_bytes "$backup_file")
+        formatted_archive_size=$(format_size "$archive_size" 2>/dev/null || echo "$archive_size bytes")
         total_backup_size=$((total_backup_size + archive_size))
         
         # Calculate compression ratio safely
@@ -296,7 +296,7 @@ for project_path in "${projects[@]}"; do
             {
                 echo "Project root: $project_name/"
                 # Create directory structure tree with find, filtering out noise
-                timeout 5s find "$project_path" -type d -maxdepth 3 \
+                run_with_timeout 5 find "$project_path" -type d -maxdepth 3 \
                     -not -path "*/node_modules*" \
                     -not -path "*/\.*" \
                     -not -path "*/dist*" \
@@ -328,7 +328,7 @@ for project_path in "${projects[@]}"; do
                 
                 # List key files in root directory to give flavor of the project
                 echo -e "\nKey files in root:"
-                timeout 3s find "$project_path" -maxdepth 1 -type f \
+                run_with_timeout 3 find "$project_path" -maxdepth 1 -type f \
                     -not -path "*/\.*" \
                     -name "*.json" -o -name "*.js" -o -name "*.html" -o -name "*.py" \
                     -o -name "*.md" -o -name "Makefile" -o -name "Dockerfile" \
@@ -355,7 +355,7 @@ for project_path in "${projects[@]}"; do
             {
                 echo "Project root: $project_name/"
                 echo "Top-level directories:"
-                timeout 3s find "$project_path" -maxdepth 1 -type d \
+                run_with_timeout 3 find "$project_path" -maxdepth 1 -type d \
                     -not -path "$project_path" \
                     -not -path "*/node_modules*" \
                     -not -path "*/\.*" \
@@ -365,7 +365,7 @@ for project_path in "${projects[@]}"; do
                 done
                 
                 echo -e "\nKey files in root:"
-                timeout 2s find "$project_path" -maxdepth 1 -type f \
+                run_with_timeout 2 find "$project_path" -maxdepth 1 -type f \
                     -not -path "*/\.*" \
                     -name "*.json" -o -name "README*" -o -name "Makefile" \
                     -o -name "package.json" -o -name "composer.json" 2>/dev/null | sort | while read -r file; do
@@ -426,8 +426,8 @@ echo -e "${GREEN}✓ Backup files organized${NC}"
 echo -e "\n${CYAN}===== Backup Summary =====${NC}"
 echo "Total projects backed up: $successful"
 echo "Failed backups: $failed"
-echo "Total source size: $(numfmt --to=iec-i --suffix=B --format="%.1f" $total_src_size 2>/dev/null || echo "$total_src_size bytes")"
-echo "Total backup size: $(numfmt --to=iec-i --suffix=B --format="%.1f" $total_backup_size 2>/dev/null || echo "$total_backup_size bytes")"
+echo "Total source size: $(format_size "$total_src_size" 2>/dev/null || echo "$total_src_size bytes")"
+echo "Total backup size: $(format_size "$total_backup_size" 2>/dev/null || echo "$total_backup_size bytes")"
 
 if [ $successful -gt 0 ] && [ $total_backup_size -gt 0 ] && [ $total_src_size -gt 0 ]; then
     overall_ratio=$(awk "BEGIN {printf \"%.1f\", ($total_src_size/$total_backup_size)}")

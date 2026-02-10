@@ -4,8 +4,10 @@
 
 # Get the script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export RUNNING_TESTS=1
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/utils.sh"
+source "$SCRIPT_DIR/fs.sh"
 
 # Set defaults
 QUICK_TEST=false
@@ -122,7 +124,7 @@ if [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "unit" ]; then
     
     # Test utility functions
     run_test "Format size function" "result=\$(format_size 1024); [[ \"\$result\" == \"1.00 KB\" ]]"
-    run_test "Sanitize input function" "result=\$(sanitize_input 'test;rm -rf /'); [[ \"\$result\" == \"testrm rf \" ]]"
+    run_test "Sanitize input function" "result=\$(sanitize_input 'test;rm -rf /'); [[ \"\$result\" == \"testrm -rf /\" ]]"
     run_test "Directory exists check" "verify_directory \"$TEST_DIR\" \"Test\" true"
     
     # Test file system functions

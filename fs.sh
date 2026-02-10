@@ -381,7 +381,7 @@ upload_to_cloud() {
     fi
     
     # Get file size for progress reporting
-    local file_size=$(du -b "$backup_file" 2>/dev/null | cut -f1)
+    local file_size=$(get_file_size_bytes "$backup_file")
     log "Starting upload of $(basename "$backup_file") ($(format_size $file_size))" "$log_file" "$silent_mode"
     
     case "$provider" in

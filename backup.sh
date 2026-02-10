@@ -269,17 +269,19 @@ for dir in "${SOURCE_DIRS[@]}"; do
     if [[ "$*" == *"--quick"* ]]; then
         # For --quick, use a timeout to prevent hanging
         # Always include .ssh directory even though it's hidden
-        dir_project_output=$(timeout 30s find "$dir" -maxdepth 1 -mindepth 1 -type d \( -name ".ssh" -o -not -path "*/\.*" \) -not -path "*/node_modules*" | sort)
+        dir_project_output=$(run_with_timeout 30 find "$dir" -maxdepth 1 -mindepth 1 -type d \( -name ".ssh" -o -not -path "*/\.*" \) -not -path "*/node_modules*" | sort)
         if [ -n "$dir_project_output" ]; then
-            mapfile -t dir_projects <<< "$dir_project_output"
+            dir_projects=()
+            while IFS= read -r line; do dir_projects+=("$line"); done <<< "$dir_project_output"
             log "Found ${#dir_projects[@]} projects in $dir" "$LOG_FILE" "$SILENT_MODE"
             projects+=("${dir_projects[@]}")
         else
             log "No projects found in $dir (or search timed out)" "$LOG_FILE" "$SILENT_MODE"
         fi
     else
-        # Standard approach for normal backups
-        mapfile -t dir_projects < <(find_projects "$dir" 1)
+        # Standard approach for normal backups (portable: no process substitution for Bash 3.2)
+        dir_projects=()
+        while IFS= read -r line; do dir_projects+=("$line"); done < <(find_projects "$dir" 1)
         log "Found ${#dir_projects[@]} projects in $dir" "$LOG_FILE" "$SILENT_MODE"
         projects+=("${dir_projects[@]}")
     fi
@@ -365,7 +367,7 @@ log "Starting backup process..." "$LOG_FILE" "$SILENT_MODE"
 if [ "$SILENT_MODE" = false ]; then
     print_dashboard_header
     # Add a note about compression and backup type
-    echo -e "Backup Type: ${BACKUP_TYPE^}"
+    echo -e "Backup Type: $(capitalize "$BACKUP_TYPE")"
     echo -e "Compression Level: $COMPRESSION_LEVEL"
     
     # Show storage information and path in a more visible way
@@ -542,7 +544,7 @@ for project_path in "${projects[@]}"; do
     if [ "$success" = true ]; then
         # Get archive size (unless we're in dry-run mode, where we already set it)
         if [ "$DRY_RUN" != true ]; then
-            ARCHIVE_SIZE=$(du -b "$PROJECT_BACKUP_FILE" | cut -f1)
+            ARCHIVE_SIZE=$(get_file_size_bytes "$PROJECT_BACKUP_FILE")
         fi
         FORMATTED_ARCHIVE_SIZE=$(format_size "$ARCHIVE_SIZE")
         TOTAL_BACKUP_SIZE=$((TOTAL_BACKUP_SIZE + ARCHIVE_SIZE))
@@ -887,7 +889,7 @@ else
     BACKUP_ENTRY+="PARTIAL (WITH ERRORS)\n"
 fi
 
-BACKUP_ENTRY+="  Type: ${BACKUP_TYPE^}\n"
+BACKUP_ENTRY+="  Type: $(capitalize "$BACKUP_TYPE")\n"
 BACKUP_ENTRY+="  Storage: $([ "$EXTERNAL_BACKUP" = true ] && echo "EXTERNAL (${CLOUD_PROVIDER})" || echo "INTERNAL")\n"
 BACKUP_ENTRY+="  Projects: ${SUCCESSFUL_PROJECTS} succeeded, ${FAILED_PROJECTS} failed\n"
 BACKUP_ENTRY+="  Total Size: ${TOTAL_FORMATTED_SIZE}\n"

@@ -114,7 +114,8 @@ if [ "$LIST_BACKUPS" = true ]; then
     echo -e "${YELLOW}Available Backups:${NC}"
     
     # Find all backup directories (supports both old wsl2_backup_* and new webdev_backup_* naming)
-    mapfile -t backup_dirs < <(find "$BACKUP_DIR" -maxdepth 1 -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) | sort -r)
+    backup_dirs=()
+    while IFS= read -r line; do backup_dirs+=("$line"); done < <(find "$BACKUP_DIR" -maxdepth 1 -type d \( -name "webdev_backup_*" -o -name "wsl2_backup_*" \) | sort -r)
     
     if [ ${#backup_dirs[@]} -eq 0 ]; then
         echo -e "${RED}No backups found in $BACKUP_DIR${NC}"
@@ -169,6 +170,7 @@ else
         BACKUP_TO_RESTORE="$BACKUP_DIR/wsl2_backup_$BACKUP_DATE"
     else
         BACKUP_TO_RESTORE="$BACKUP_DIR/${BACKUP_PREFIX}_$BACKUP_DATE"
+    fi
     
     if [ ! -d "$BACKUP_TO_RESTORE" ]; then
         echo -e "${RED}ERROR: Backup for date $BACKUP_DATE not found${NC}"
@@ -198,7 +200,8 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 # Find available projects in the backup
-mapfile -t available_projects < <(find "$BACKUP_TO_RESTORE" -maxdepth 1 -type f -name "*.tar.gz" | sed -n 's/.*\/\([^_]*\)_.*/\1/p' | sort -u)
+available_projects=()
+while IFS= read -r line; do available_projects+=("$line"); done < <(find "$BACKUP_TO_RESTORE" -maxdepth 1 -type f -name "*.tar.gz" | sed -n 's/.*\/\([^_]*\)_.*/\1/p' | sort -u)
 
 if [ ${#available_projects[@]} -eq 0 ]; then
     # Special handling for dry-run mode
@@ -301,17 +304,15 @@ if [ "$SKIP_VERIFY" != true ]; then
                 # Check for checksum file if available
                 checksum_file="${project_file}.sha256"
                 if [ -f "$checksum_file" ]; then
-                    if command -v sha256sum >/dev/null 2>&1; then
-                        expected_checksum=$(awk '{print $1}' "$checksum_file")
-                        actual_checksum=$(sha256sum "$project_file" | awk '{print $1}')
-                        if [ "$expected_checksum" != "$actual_checksum" ]; then
+                    expected_checksum=$(awk '{print $1}' "$checksum_file")
+                    actual_checksum=$(calculate_checksum "$project_file")
+                    if [ -n "$actual_checksum" ] && [ "$expected_checksum" != "$actual_checksum" ]; then
                             log "ERROR: Checksum mismatch for: $project_file" "$LOG_FILE"
                             echo -e "${RED}✗ Checksum verification failed: $(basename "$project_file")${NC}"
                             validation_failed=true
                         else
                             echo -e "${GREEN}✓ Checksum verified: $(basename "$project_file")${NC}"
                         fi
-                    fi
                 else
                     echo -e "${YELLOW}○ No checksum file found for: $(basename "$project_file")${NC}"
                     echo -e "${YELLOW}  Archive integrity test passed, but checksum verification unavailable${NC}"

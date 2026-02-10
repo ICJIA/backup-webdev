@@ -380,7 +380,7 @@ EOF
                 if ! [[ "$src_size" =~ ^[0-9]+$ ]] || [ "$src_size" -eq 0 ]; then
                     # Look up the actual project on disk and get its size
                     if [ -d "$full_project_path" ]; then
-                        src_size=$(du -sb "$full_project_path" 2>/dev/null | cut -f1)
+                        src_size=$(get_file_size_bytes "$full_project_path")
                         if ! [[ "$src_size" =~ ^[0-9]+$ ]] || [ "$src_size" -eq 0 ]; then
                             # If we still can't get a valid size, use a random realistic value
                             src_size=$((RANDOM * 1000 + 100000))
@@ -409,7 +409,7 @@ EOF
                     # Look for the backup file
                     local backup_files=($FULL_BACKUP_PATH/${project}_*.tar.gz)
                     if [ ${#backup_files[@]} -gt 0 ] && [ -f "${backup_files[0]}" ]; then
-                        archive_size=$(du -sb "${backup_files[0]}" 2>/dev/null | cut -f1)
+                        archive_size=$(get_file_size_bytes "${backup_files[0]}")
                     fi
                     
                     if ! [[ "$archive_size" =~ ^[0-9]+$ ]] || [ "$archive_size" -eq 0 ]; then

@@ -106,7 +106,7 @@ organize_backup_dir() {
         local project_count=$(find "$backup_dir" -maxdepth 1 -name "*.tar.gz" | wc -l)
         
         # Get total size of backup
-        local total_size=$(du -sb "$backup_dir" | cut -f1)
+        local total_size=$(get_file_size_bytes "$backup_dir")
         
         # Get date from directory name if possible
         local date_str=$(basename "$backup_dir" | grep -o "[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}_[0-9]\{2\}-[0-9]\{2\}-[0-9]\{2\}" || date +"%Y-%m-%d_%H-%M-%S")

@@ -4,13 +4,14 @@
 
 # Source the shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../core/config.sh"
-source "$SCRIPT_DIR/../utils/utils.sh"
-source "$SCRIPT_DIR/../ui/ui.sh"
+source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/utils.sh"
+source "$SCRIPT_DIR/ui.sh"
 
 # Backup script path (absolute path)
 BACKUP_SCRIPT="$SCRIPT_DIR/webdev-backup.sh"
-TMP_CRONTAB="/tmp/crontab.$$"
+TMP_CRONTAB=$(mktemp -t crontab.XXXXXX) || { echo "Failed to create temp file"; exit 1; }
+trap 'rm -f "$TMP_CRONTAB"' EXIT
 CRON_COMMENT="# WebDev Backup Tool automatic backup"
 DEFAULT_INTERVAL=72 # Default backup interval in hours
 

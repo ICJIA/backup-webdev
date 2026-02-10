@@ -161,7 +161,7 @@ setup_password_encryption() {
     # Use 10000 iterations of PBKDF2 for key stretching
     local hash="$password$salt"
     for i in {1..10000}; do
-        hash=$(echo -n "$hash" | sha256sum | cut -d' ' -f1)
+        hash=$(echo -n "$hash" | sha256_stdin)
     done
     echo "$hash" > "$PASSWORD_FILE"
     chmod 600 "$PASSWORD_FILE"
@@ -190,7 +190,7 @@ encrypt_backup_with_password() {
     
     # Verify password against stored hash
     local salt=$(cat "$SALT_FILE")
-    local entered_hash=$(echo -n "$password$salt" | sha256sum | cut -d' ' -f1)
+    local entered_hash=$(echo -n "$password$salt" | sha256_stdin)
     local stored_hash=$(cat "$PASSWORD_FILE")
     
     if [ "$entered_hash" != "$stored_hash" ]; then

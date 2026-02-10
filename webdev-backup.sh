@@ -19,6 +19,9 @@ if [[ "$*" == *"--silent"* ]] || [[ "$*" == *"--dry-run"* ]]; then
     exit $?
 fi
 
+# Check for first-time run and prompt configuration
+check_first_run
+
 # Display header
 clear
 echo -e "${CYAN}===============================================${NC}"
@@ -27,10 +30,12 @@ echo -e "${CYAN}===============================================${NC}"
 echo -e "${GREEN}A robust backup solution for web development projects${NC}"
 echo -e "Current date: $(date '+%Y-%m-%d %H:%M:%S')\n"
 
+# Always display current configuration
+display_current_config
+
 # Show configuration summary
-echo -e "${YELLOW}Current Configuration:${NC}"
+echo -e "${YELLOW}Source Directories:${NC}"
 if [ ${#DEFAULT_SOURCE_DIRS[@]} -gt 0 ]; then
-    echo -e "Source directories:"
     for ((i=0; i<${#DEFAULT_SOURCE_DIRS[@]}; i++)); do
         echo -e "- [${i}] ${DEFAULT_SOURCE_DIRS[$i]} ($(realpath "${DEFAULT_SOURCE_DIRS[$i]}"))"
         
@@ -50,13 +55,8 @@ if [ ${#DEFAULT_SOURCE_DIRS[@]} -gt 0 ]; then
     done
 else
     echo -e "${RED}No source directories configured!${NC}"
+    echo -e "${YELLOW}Edit config.sh to add source directories${NC}"
 fi
-
-echo -e "- Backup destination:    ${BACKUP_DIR:-$DEFAULT_BACKUP_DIR} (Absolute: $(realpath "${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"))"
-echo -e "- Logs directory:        $LOGS_DIR (Absolute: $(realpath "$LOGS_DIR"))"
-echo -e "- Test directory:        $TEST_DIR (Absolute: $(realpath "$TEST_DIR"))"
-
-echo
 
 # Show last backup if available
 if [ -f "$BACKUP_HISTORY_LOG" ]; then

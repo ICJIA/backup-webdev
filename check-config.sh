@@ -14,8 +14,7 @@ echo
 
 # Check system information
 echo -e "${YELLOW}System Information:${NC}"
-echo "- OS: $(uname -s)"
-echo "- Version: $(uname -r)"
+echo "- OS: $(get_os_version_display)"
 echo "- Hostname: $(hostname)"
 echo "- User: $(whoami)"
 
@@ -61,19 +60,19 @@ for tool in "${OPTIONAL_TOOLS[@]}"; do
         case "$tool" in
             pigz)
                 echo "  - Parallel compression will not be available"
-                echo "  - Install with: sudo apt install pigz"
+                [ "$(uname -s)" = "Darwin" ] && echo "  - Install with: brew install pigz" || echo "  - Install with: sudo apt install pigz"
                 ;;
             gnuplot)
                 echo "  - Chart generation will not be available"
-                echo "  - Install with: sudo apt install gnuplot"
+                [ "$(uname -s)" = "Darwin" ] && echo "  - Install with: brew install gnuplot" || echo "  - Install with: sudo apt install gnuplot"
                 ;;
             awscli)
                 echo "  - Cloud storage to AWS/S3/DO Spaces will not be available"
-                echo "  - Install with: sudo apt install awscli"
+                [ "$(uname -s)" = "Darwin" ] && echo "  - Install with: brew install awscli" || echo "  - Install with: sudo apt install awscli"
                 ;;
             bc)
                 echo "  - Some advanced calculations may not work properly"
-                echo "  - Install with: sudo apt install bc"
+                [ "$(uname -s)" = "Darwin" ] && echo "  - Install with: brew install bc" || echo "  - Install with: sudo apt install bc"
                 ;;
         esac
     fi

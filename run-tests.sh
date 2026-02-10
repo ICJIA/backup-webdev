@@ -3,6 +3,7 @@
 
 # Get the script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export RUNNING_TESTS=1
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/utils.sh"
 

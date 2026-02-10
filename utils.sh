@@ -56,6 +56,59 @@ detect_os() {
     esac
 }
 
+# Get human-readable OS name and version (for display in app)
+# Examples: "macOS 15.0 (Darwin 24.0.0)" or "Ubuntu 22.04 (Linux 5.15.0)"
+get_os_version_display() {
+    local kernel_name kernel_release
+    kernel_name=$(uname -s)
+    kernel_release=$(uname -r 2>/dev/null)
+    
+    case "$kernel_name" in
+        Darwin*)
+            # macOS: use sw_vers for product name and version
+            if [ -x "/usr/bin/sw_vers" ]; then
+                local product_name product_version
+                product_name=$(sw_vers -productName 2>/dev/null)
+                product_version=$(sw_vers -productVersion 2>/dev/null)
+                if [ -n "$product_name" ] && [ -n "$product_version" ]; then
+                    echo "${product_name} ${product_version} (Darwin ${kernel_release})"
+                    return
+                fi
+            fi
+            echo "macOS (Darwin ${kernel_release})"
+            ;;
+        Linux*)
+            # Linux: try /etc/os-release first, then lsb_release
+            if [ -f /etc/os-release ]; then
+                local pretty_name version_id
+                pretty_name=$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2)
+                version_id=$(grep -E '^VERSION_ID=' /etc/os-release 2>/dev/null | cut -d'"' -f2)
+                if [ -n "$pretty_name" ]; then
+                    echo "${pretty_name} (Linux ${kernel_release})"
+                    return
+                fi
+                if [ -n "$version_id" ]; then
+                    local name=$(grep -E '^NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2)
+                    echo "${name} ${version_id} (Linux ${kernel_release})"
+                    return
+                fi
+            fi
+            if command -v lsb_release >/dev/null 2>&1; then
+                local desc
+                desc=$(lsb_release -ds 2>/dev/null | tr -d '"')
+                if [ -n "$desc" ]; then
+                    echo "${desc} (Linux ${kernel_release})"
+                    return
+                fi
+            fi
+            echo "Linux ${kernel_release}"
+            ;;
+        *)
+            echo "${kernel_name} ${kernel_release}"
+            ;;
+    esac
+}
+
 # Get OS type for compatibility checks
 OS_TYPE=$(detect_os)
 IS_MACOS=false
@@ -84,6 +137,93 @@ PURPLE='\033[0;35m'
 WHITE='\033[1;37m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
+
+# Check if this is the first run and prompt user to configure
+check_first_run() {
+    local config_file="$SCRIPT_DIR/config.sh"
+    
+    # Check if configuration marker exists
+    if [ ! -f "$FIRST_RUN_MARKER" ]; then
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${YELLOW}${BOLD}                   FIRST TIME SETUP${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo
+        echo -e "${YELLOW}This appears to be your first time running the backup tool.${NC}"
+        echo
+        echo -e "${WHITE}Current Configuration:${NC}"
+        echo -e "  ${CYAN}Config File:${NC}    $config_file"
+        echo -e "  ${CYAN}Source:${NC}         ${DEFAULT_SOURCE_DIRS[*]}"
+        echo -e "  ${CYAN}Destination:${NC}    $DEFAULT_BACKUP_DIR"
+        echo -e "  ${CYAN}OS Detected:${NC}    $(get_os_version_display)"
+        echo
+        echo -e "${YELLOW}These defaults may not be appropriate for your system.${NC}"
+        echo
+        read -p "$(echo -e ${WHITE}Would you like to configure the backup settings now? [y/N]: ${NC})" -n 1 -r configure_now
+        echo
+        
+        if [[ "$configure_now" =~ ^[Yy]$ ]]; then
+            echo
+            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${GREEN}${BOLD}                   CONFIGURATION GUIDE${NC}"
+            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo
+            echo -e "${WHITE}To configure your backup settings:${NC}"
+            echo
+            echo -e "${CYAN}1.${NC} Open the configuration file:"
+            echo -e "   ${GREEN}nano $config_file${NC}"
+            echo -e "   ${YELLOW}or${NC}"
+            echo -e "   ${GREEN}vi $config_file${NC}"
+            echo
+            echo -e "${CYAN}2.${NC} Update these key settings:"
+            echo
+            echo -e "   ${WHITE}DEFAULT_SOURCE_DIRS${NC} - Directories to back up"
+            echo -e "   Example for macOS:"
+            echo -e "     ${GREEN}DEFAULT_SOURCE_DIRS=(\"\$HOME/Developer\" \"\$HOME/Documents/Projects\")${NC}"
+            echo
+            echo -e "   Example for Linux:"
+            echo -e "     ${GREEN}DEFAULT_SOURCE_DIRS=(\"/home/user/projects\" \"/home/user/repos\")${NC}"
+            echo
+            echo -e "   ${WHITE}DEFAULT_BACKUP_DIR${NC} - Where to store backups"
+            echo -e "   Examples:"
+            echo -e "     ${GREEN}DEFAULT_BACKUP_DIR=\"$HOME/backups\"${NC}"
+            echo -e "     ${GREEN}DEFAULT_BACKUP_DIR=\"/Volumes/MyDrive/backups\"${NC}"
+            echo -e "     ${GREEN}DEFAULT_BACKUP_DIR=\"/mnt/backup-drive/backups\"${NC}"
+            echo
+            echo -e "${CYAN}3.${NC} Save and close the file"
+            echo
+            echo -e "${CYAN}4.${NC} Run the backup tool again:"
+            echo -e "   ${GREEN}./webdev-backup.sh${NC}"
+            echo
+            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo
+            echo -e "${YELLOW}Exiting to allow you to configure the tool...${NC}"
+            echo
+            exit 0
+        else
+            # User declined to configure, mark as configured and continue
+            touch "$FIRST_RUN_MARKER"
+            echo
+            echo -e "${GREEN}Using default settings. You can configure anytime by editing:${NC}"
+            echo -e "${CYAN}$config_file${NC}"
+            echo
+            sleep 2
+        fi
+    fi
+}
+
+# Display current configuration (always show this)
+display_current_config() {
+    local config_file="$SCRIPT_DIR/config.sh"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${WHITE}${BOLD}                 CURRENT CONFIGURATION${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}Config File:${NC}     $config_file"
+    echo -e "${CYAN}Source Dirs:${NC}     ${DEFAULT_SOURCE_DIRS[*]}"
+    echo -e "${CYAN}Destination:${NC}     $DEFAULT_BACKUP_DIR"
+    echo -e "${CYAN}Full Path:${NC}       $(cd "$DEFAULT_BACKUP_DIR" 2>/dev/null && pwd || echo "$DEFAULT_BACKUP_DIR (not created yet)")"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo
+}
 
 # Format size function (converts bytes to human readable format)
 format_size() {
@@ -317,6 +457,64 @@ verify_directory() {
     return 0
 }
 
+# Get file size in bytes (cross-platform: macOS stat vs Linux du -b)
+get_file_size_bytes() {
+    local path="$1"
+    if [ ! -e "$path" ]; then
+        echo "0"
+        return
+    fi
+    if [ "$IS_MACOS" = true ]; then
+        if [ -f "$path" ]; then
+            stat -f %z "$path" 2>/dev/null || echo "0"
+        else
+            # Directory: use find + du -k (macOS du has no -b)
+            find "$path" -type f -exec du -k {} + 2>/dev/null | awk '{sum += $1} END {print sum * 1024}'
+        fi
+    else
+        du -sb "$path" 2>/dev/null | cut -f1
+    fi
+}
+
+# Run a command with optional timeout (timeout/gtimeout on Linux, no timeout on macOS if missing)
+run_with_timeout() {
+    local seconds="$1"
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "${seconds}s" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        gtimeout "${seconds}s" "$@"
+    else
+        "$@"
+    fi
+}
+
+# Portable: read lines into array (replaces mapfile/readarray for Bash 3.2)
+# Usage: read_lines_into_array ARRAY_NAME < input_or_pipe
+read_lines_into_array() {
+    local arr_name="$1"
+    eval "$arr_name=()"
+    while IFS= read -r line; do
+        eval "$arr_name+=(\"\$line\")"
+    done
+}
+
+# Portable: capitalize first letter (replaces ${var^} for Bash 3.2)
+capitalize() {
+    echo "$1" | awk '{print toupper(substr($0,1,1)) substr($0,2)}'
+}
+
+# Hash stdin with SHA-256 (cross-platform: sha256sum vs shasum)
+sha256_stdin() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 | cut -d' ' -f1
+    else
+        echo "" && return 1
+    fi
+}
+
 # Calculate checksum for a file
 calculate_checksum() {
     local file_path=$1
@@ -343,7 +541,7 @@ verify_backup() {
     fi
     
     # Check file is not empty
-    local file_size=$(du -b "$backup_file" | cut -f1)
+    local file_size=$(get_file_size_bytes "$backup_file")
     if [ "$file_size" -eq 0 ]; then
         log "✗ Backup file is empty: $(basename "$backup_file")" "$log_file" "$silent_mode"
         return 1
@@ -584,7 +782,7 @@ monitor_file_progress() {
     while true; do
         # Check if file exists yet
         if [ -f "$file_path" ]; then
-            current_size=$(du -b "$file_path" 2>/dev/null | cut -f1)
+            current_size=$(get_file_size_bytes "$file_path")
             
             # If expected size is not provided, use some heuristics
             if [ -z "$expected_size" ] || [ "$expected_size" -eq 0 ]; then
