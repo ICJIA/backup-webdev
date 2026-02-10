@@ -32,7 +32,21 @@ Manual: `chmod +x *.sh`, then `./setup-alias.sh` and `./check-config.sh`.
 - **With options:** `./backup.sh --incremental --verify`, `./backup.sh --source ~/projects`, `./backup.sh --sources ~/a,~/b --verify`
 - **Restore:** `./restore.sh --latest`, `./restore.sh --project myproject --dest ~/restored`
 - **Compare:** `./compare-backups.sh --backup1 latest --backup2 latest` (optional `--project`, `--format json`, `--only-changes`)
-- **Tests:** `./run-tests.sh` (or `--unit`, `--integration`, `--security`). No config needed; uses test dirs.
+
+## Testing
+
+Tests run with no config (they use `test/` and `test-projects/`).
+
+```bash
+./run-tests.sh              # Unit + integration + security audit
+./run-tests.sh --unit       # Unit only (6 tests)
+./run-tests.sh --integration # Integration only (4 tests)
+./run-tests.sh --security   # Security audit only
+```
+
+**Coverage:** Unit tests exercise helpers (`format_size`, `sanitize_input`, directory checks, `find_projects`, checksum, `verify_backup`). Integration tests run backup dry-run, full backup, and restore dry-run. The security audit checks permissions, sensitive files in git, hardcoded credentials, eval usage, and temp file handling.
+
+You can also run `./test-backup.sh` (with `--quick`, `--unit`, or `--integration`) or `npm test`.
 
 ## Configuration
 
