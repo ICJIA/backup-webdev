@@ -9,6 +9,9 @@ source "$SCRIPT_DIR/utils.sh"
 source "$SCRIPT_DIR/ui.sh"
 source "$SCRIPT_DIR/reporting.sh"
 
+TEMP_CONFIG=""
+trap 'rm -f "$TEMP_CONFIG" 2>/dev/null' EXIT
+
 # Get passed arguments to forward to other scripts if needed
 ARGS="$@"
 
@@ -96,6 +99,7 @@ echo "6) View Backup Dashboard"
 echo "7) View Project Documentation"
 echo "8) View Backup History"
 echo "9) Configure Automated Backups (Cron)"
+echo "p) Prune Backups (keep 5 latest or delete one by one)"
 echo "m) Manage Source Directories"
 echo "0) Advanced Options"
 echo "q) Quit"
@@ -455,6 +459,15 @@ EOL
         read -p "Press Enter to return to the main menu..." dummy
         exec "$0" "$@"  # Restart menu
         ;;
+    p)
+        # Prune backups: keep 5 latest or delete one by one
+        echo -e "\n${CYAN}Starting prune backups...${NC}\n"
+        sleep 1
+        "$SCRIPT_DIR/prune-backups.sh" "$DEFAULT_BACKUP_DIR" 5
+        echo ""
+        read -p "Press Enter to return to the main menu..." dummy
+        exec "$0" "$@"  # Restart menu
+        ;;
     m)
         # Option to manage source directories
         clear
@@ -487,6 +500,12 @@ EOL
                 if [ -n "$new_dir" ]; then
                     # Expand ~ in path if present
                     new_dir="${new_dir/#\~/$HOME}"
+                    # Keep config.sh syntax safe (reject quotes/newlines in stored path)
+                    if ! is_safe_config_literal "$new_dir"; then
+                        echo -e "${RED}Error: Directory path contains unsupported quote/newline characters.${NC}"
+                        read -p "Press Enter to continue..."
+                        exec "$0" "$@"
+                    fi
                     
                     if [ -d "$new_dir" ]; then
                         # Check if already in the list
@@ -502,7 +521,7 @@ EOL
                             # Add to the array in config.sh
                             TEMP_CONFIG=$(mktemp)
                             # Extract the part before and after the DEFAULT_SOURCE_DIRS array
-                            awk '/^DEFAULT_SOURCE_DIRS=\(\)/{flag=1} flag && /^\)/{flag=0; print "DEFAULT_SOURCE_DIRS=("; for(i=0; i<dir_count; i++) print "    \"" dirs[i] "\""; print "    \"'$new_dir'\""; print ")" ; next} flag{dirs[dir_count++]=$0; next} {print}' dir_count=0 "$SCRIPT_DIR/config.sh" > "$TEMP_CONFIG"
+                            awk -v new_dir="$new_dir" '/^DEFAULT_SOURCE_DIRS=\(\)/{flag=1} flag && /^\)/{flag=0; print "DEFAULT_SOURCE_DIRS=("; for(i=0; i<dir_count; i++) print "    \"" dirs[i] "\""; print "    \"" new_dir "\""; print ")" ; next} flag{dirs[dir_count++]=$0; next} {print}' dir_count=0 "$SCRIPT_DIR/config.sh" > "$TEMP_CONFIG"
                             
                             # Backup the current config
                             cp "$SCRIPT_DIR/config.sh" "$SCRIPT_DIR/config.sh.bak"
@@ -526,7 +545,7 @@ EOL
                                 
                                 # Add to the array in config.sh
                                 TEMP_CONFIG=$(mktemp)
-                                awk '/^DEFAULT_SOURCE_DIRS=\(\)/{flag=1} flag && /^\)/{flag=0; print "DEFAULT_SOURCE_DIRS=("; for(i=0; i<dir_count; i++) print "    \"" dirs[i] "\""; print "    \"'$new_dir'\""; print ")" ; next} flag{dirs[dir_count++]=$0; next} {print}' dir_count=0 "$SCRIPT_DIR/config.sh" > "$TEMP_CONFIG"
+                                awk -v new_dir="$new_dir" '/^DEFAULT_SOURCE_DIRS=\(\)/{flag=1} flag && /^\)/{flag=0; print "DEFAULT_SOURCE_DIRS=("; for(i=0; i<dir_count; i++) print "    \"" dirs[i] "\""; print "    \"" new_dir "\""; print ")" ; next} flag{dirs[dir_count++]=$0; next} {print}' dir_count=0 "$SCRIPT_DIR/config.sh" > "$TEMP_CONFIG"
                                 
                                 # Backup the current config
                                 cp "$SCRIPT_DIR/config.sh" "$SCRIPT_DIR/config.sh.bak"

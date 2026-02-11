@@ -1,5 +1,8 @@
 # WebDev Backup Tool
 
+<!-- Optional CI badge (replace USER/REPO with your GitHub org/repo) -->
+[![CI](https://github.com/USER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/REPO/actions/workflows/ci.yml)
+
 <p align="center">
   <img src="assets/og-image.png" alt="WebDev Backup Tool" width="1200" />
 </p>
@@ -34,7 +37,7 @@ You can also run `./setup-alias.sh` from the repo to add the alias for you.
 
 ## Features
 
-- **Backup**: Multi-directory, full/incremental/differential, quick backup (default from menu), compression (gzip/pigz), excludes `node_modules`. Each `.tar.gz` is self-contained: extracting creates a single top-level folder with everything inside. Quick backup shows live per-folder progress (same dashboard as interactive).
+- **Backup**: Multi-directory, full/incremental/differential, quick backup (default from menu), compression (gzip/pigz). **`node_modules` is never included** in backups to save space; you can rebuild dependencies after restore with `yarn install` or `npm install`. Each `.tar.gz` is self-contained: extracting creates a single top-level folder with everything inside. Quick backup shows live per-folder progress (same dashboard as interactive).
 - **Restore**: With integrity validation (tar + SHA256); optional `--skip-verify`
 - **Reporting**: HTML reports, email, charts (gnuplot), backup comparison
 - **Security**: Permissions, secrets handling, security audit script
@@ -70,28 +73,39 @@ Tests run with no config (they use `test/` and `test-projects/`).
 
 ```bash
 ./run-tests.sh              # Unit + integration + security audit
-./run-tests.sh --unit       # Unit only (32 tests)
-./run-tests.sh --integration # Integration only (9 tests)
+./run-tests.sh --unit       # Unit only (38 tests)
+./run-tests.sh --integration # Integration only (10 tests)
 ./run-tests.sh --security   # Security audit only
 ```
 
-**Coverage (41 tests):**
+**Coverage (48 tests):**
 
 | Category | Tests | What's covered |
 |----------|-------|----------------|
-| **Unit (32)** | `format_size` (0 B through GB), `sanitize_input` (basic + strict), `validate_path` (traversal, injection, empty, relative, absolute), `detect_os`, `get_os_version_display`, `get_file_size_bytes` (file + missing), `calculate_checksum` (consistency + SHA256 length), `check_required_tools` (present + missing), `format_time` (seconds/minutes/hours), `capitalize`, `verify_directory` (exists + missing), `find_projects`, `verify_backup` (valid + corrupted archive) | Core utility functions, edge cases, and error paths |
-| **Integration (9)** | Backup dry-run, full backup, backup-file existence, node_modules exclusion, archive integrity (`verify_backup`), source-file presence in archive, restore dry-run, incremental backup, config with RUNNING_TESTS | End-to-end backup/restore workflow and configuration |
+| **Unit (38)** | `format_size` (0 B through GB), `sanitize_input` (basic + strict), `validate_path` (traversal, injection, empty, relative, absolute), `detect_os`, `get_os_version_display`, `get_file_size_bytes` (file + missing), `calculate_checksum` (consistency + SHA256 length), `check_required_tools` (present + missing), `format_time` (seconds/minutes/hours), `capitalize`, `verify_directory` (exists + missing), `find_projects`, `verify_backup` (valid + corrupted archive), `is_safe_config_literal` checks, and `sanitize_cron_backup_options` allow/reject cases | Core utility functions, edge cases, and error paths |
+| **Integration (10)** | Backup dry-run, full backup, backup-file existence, node_modules exclusion, archive integrity (`verify_backup`), source-file presence in archive, **.env and lockfiles included**, restore dry-run, incremental backup, config with RUNNING_TESTS | End-to-end backup/restore workflow and configuration |
 | **Security** | File permissions, sensitive files in git, hardcoded credentials, eval usage, temp file handling | Static analysis of common vulnerabilities |
 
 You can also run `./test-backup.sh` (with `--quick`, `--unit`, or `--integration`) or `npm test`.
 
-**Platform verification (macOS, Linux, WSL2):** The same test suite and scripts are supported on all three. To verify on your platform:
+**Platform verification (macOS, Linux, WSL2):** The same test suite and scripts run on all three. Ubuntu is the primary Linux target.
 
-- **macOS / Linux / WSL2:** Run `./run-tests.sh` (no config required; uses test directories). All 41 tests should pass.
-- **Compatibility check:** Run `./verify-implementation.sh` to confirm config, first-run, and OS-specific paths (e.g. `get_file_size_bytes`, `run_with_timeout`, tar flags). It reports macOS or Linux and suggests next steps.
-- **Quick smoke test:** `./backup.sh --quick --dry-run` should show the backup dashboard and a simulated run without writing files.
+| Platform | How to verify |
+|----------|---------------|
+| **macOS** | `./run-tests.sh` (all 42 tests), `./backup.sh --quick --dry-run`, `./verify-implementation.sh` |
+| **Linux (Ubuntu)** | Same commands; uses GNU tools (`stat -c`, `date -d`, etc.) |
+| **WSL2** | Same as Linux; use `/mnt/c`, `/mnt/d` etc. for Windows drives (see **Paths by platform** below) |
 
-On WSL2, use `/mnt/<letter>/` for Windows drives (see **Paths by platform** in Configuration). The app uses `uname -s` to choose the right commands (e.g. BSD vs GNU `find`, `stat` vs `du`).
+- **Compatibility check:** `./verify-implementation.sh` confirms config, first-run, and OS-specific paths (e.g. `get_file_size_bytes`, `run_with_timeout`, tar flags). It reports macOS or Linux and suggests next steps.
+- **Quick smoke test:** `./backup.sh --quick --dry-run` shows the backup dashboard and a simulated run without writing files.
+
+The app uses `uname -s` to choose the right commands (e.g. BSD vs GNU `find`, `stat` vs `du`, `date -r` vs `date -d`).
+
+## Exclusions and what’s included
+
+- **`node_modules`** – Excluded from all backups (full, incremental, differential, and quick) to **save space**. Dependencies are easy to rebuild after restore: run `yarn install` or `npm install` in each project directory. Exclusion is verified by the integration test suite.
+
+- **Always included** (so you can reconstruct the app after restore): **`.env`** (and common variants like `.env.local`), **`yarn.lock`**, and **npm lockfiles** (`package-lock.json`, `npm-shrinkwrap.json`) are *not* excluded. With these in the backup, a restore plus `yarn install` or `npm install` reproduces the same dependency tree and environment.
 
 ## Configuration
 
@@ -128,6 +142,37 @@ All command-line options pass through to the alias. Dry-run only checks that sou
 2. **`./secure-secrets.sh`** – set up credential storage
 3. **`./security-audit.sh`** – checks permissions, sensitive files in git, hardcoded credentials, eval, temp files (also runs with `./run-tests.sh`)
 
+## Pull Request Checklist
+
+Use this checklist before opening or merging a PR:
+
+- [ ] Ran `./run-tests.sh` locally and all suites passed.
+- [ ] Ran `./security-audit.sh` and it reported no issues.
+- [ ] Verified on at least one target platform (`macOS` or `Ubuntu/WSL2`).
+- [ ] If shell scripts changed, ensured `bash -n` passes.
+- [ ] Updated `README.md` or docs for any behavior/CLI changes.
+- [ ] Confirmed no secrets were added (especially `secrets.sh`, `.env`, credentials).
+
+CI (`.github/workflows/ci.yml`) enforces syntax checks and full tests on macOS and Ubuntu.
+
+## Contributing
+
+Before opening a PR, run the local quality gate:
+
+```bash
+./run-tests.sh && ./security-audit.sh
+```
+
+Recommended when changing shell scripts:
+
+```bash
+find . -type f -name "*.sh" -exec bash -n {} \;
+```
+
+If your change affects platform-specific behavior, validate at least one of:
+- macOS
+- Ubuntu Linux (or WSL2 Ubuntu)
+
 **What's hardened:**
 - All temp files use `mktemp` (no `/tmp/` predictable paths in active code)
 - `umask 027` in utils, encryption, and setup scripts
@@ -144,6 +189,7 @@ Full details: [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md)
 |--------|--------|
 | `webdev-backup.sh` | Main menu |
 | `backup.sh`, `restore.sh`, `quick-backup.sh` | Backup and restore |
+| `prune-backups.sh` | Prune old backups (keep 5 latest or delete one by one) |
 | `config.sh`, `utils.sh`, `fs.sh`, `ui.sh` | Config and shared modules |
 | `configure-cron.sh` | Cron schedules (uses mktemp) |
 | `compare-backups.sh` | Compare two backups |

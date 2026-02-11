@@ -44,8 +44,11 @@ for dir in "${SOURCE_DIRS[@]}"; do
     dir_name=$(basename "$dir")
     echo -e "\n${CYAN}=== Directory: $dir (${dir_name}) ===${NC}"
 
-    # Find projects in this directory
-    mapfile -t projects < <(find "$dir" -maxdepth 1 -mindepth 1 -type d -not -path "*/\.*" | sort)
+    # Find projects in this directory (Bash 3.2 compatible)
+    projects=()
+    while IFS= read -r project_path; do
+        [ -n "$project_path" ] && projects+=("$project_path")
+    done < <(find "$dir" -maxdepth 1 -mindepth 1 -type d -not -path "*/\.*" | sort)
 
     # Display projects
     if [ ${#projects[@]} -gt 0 ]; then

@@ -16,20 +16,22 @@ readonly ERROR_WARNING=1   # Warning, non-critical
 readonly ERROR_CRITICAL=2  # Critical error, operation cannot continue
 readonly ERROR_FATAL=3     # Fatal error, script termination required
 
-# Error codes and meanings
-declare -A ERROR_CODES=(
-    [1]="Configuration error"
-    [2]="File system error"
-    [3]="Missing dependencies"
-    [4]="Permission denied"
-    [5]="Network error"
-    [6]="Backup creation failed"
-    [7]="Verification failed"
-    [8]="Restore operation failed"
-    [9]="Cloud upload/download failed"
-    [10]="Invalid arguments"
-    [99]="Unknown error"
-)
+# Error code lookup (Bash 3.2 compatible; avoid associative arrays)
+get_error_type() {
+    case "${1:-99}" in
+        1) echo "Configuration error" ;;
+        2) echo "File system error" ;;
+        3) echo "Missing dependencies" ;;
+        4) echo "Permission denied" ;;
+        5) echo "Network error" ;;
+        6) echo "Backup creation failed" ;;
+        7) echo "Verification failed" ;;
+        8) echo "Restore operation failed" ;;
+        9) echo "Cloud upload/download failed" ;;
+        10) echo "Invalid arguments" ;;
+        *) echo "Unknown error" ;;
+    esac
+}
 
 # Terminal colors
 RED='\033[0;31m'
@@ -52,7 +54,8 @@ handle_error() {
     local calling_line=$(caller | awk '{print $1}')
     
     # Format error message for logging
-    local error_type=${ERROR_CODES[$code]:-"Unknown error type"}
+    local error_type
+    error_type=$(get_error_type "$code")
     local log_message="[$timestamp] [${error_type}] (Code: $code) ${message}"
     local detail_message="In script $calling_script at line $calling_line"
     

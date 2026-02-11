@@ -16,15 +16,19 @@ create_email_report() {
     local end_time=$7
     local backup_type=${8:-"full"}
     
-    # Calculate duration
-    local duration=$(( $(date -d "$end_time" +%s) - $(date -d "$start_time" +%s) ))
+    # Calculate duration (cross-platform: date_to_seconds from utils.sh)
+    local end_sec start_sec duration
+    end_sec=$(date_to_seconds "$end_time")
+    start_sec=$(date_to_seconds "$start_time")
+    duration=$(( end_sec - start_sec ))
+    [ "$duration" -lt 0 ] && duration=0
     local duration_str=$(printf "%02d:%02d:%02d" $(($duration/3600)) $(($duration%3600/60)) $(($duration%60)))
     
     # Create email content
     local email_content="WebDev Backup Report - $(date '+%Y-%m-%d')\n"
     email_content+="\n===== Backup Summary =====\n"
     email_content+="Date: $end_time\n"
-    email_content+="Backup Type: ${backup_type^}\n"
+    email_content+="Backup Type: $(capitalize "$backup_type")\n"
     email_content+="Duration: $duration_str\n"
     email_content+="Projects Processed: $(($successful + $failed))\n"
     email_content+="Successfully Backed Up: $successful\n"

@@ -241,7 +241,10 @@ fi
 # Get list of projects
 projects=()
 for dir in "${SOURCE_DIRS[@]}"; do
-    mapfile -t dir_projects < <(find_projects "$dir" 1)
+    dir_projects=()
+    while IFS= read -r project_path; do
+        [ -n "$project_path" ] && dir_projects+=("$project_path")
+    done < <(find_projects "$dir" 1)
     projects+=("${dir_projects[@]}")
 done
 

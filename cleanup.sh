@@ -75,7 +75,8 @@ while [[ $# -gt 0 ]]; do
             ;;
         -s|--source)
             if [[ -n "$2" && "$2" != --* ]]; then
-                CUSTOM_SOURCE_DIR="$2"
+                _dir="${2/#\~/$HOME}"
+                CUSTOM_SOURCE_DIR=$(validate_path "$_dir" "dir") || { echo -e "${RED}Error: Invalid source path${NC}"; exit 1; }
                 shift 2
             else
                 echo -e "${RED}Error: Source argument requires a directory path${NC}"
@@ -84,8 +85,8 @@ while [[ $# -gt 0 ]]; do
             ;;
         -t|--target)
             if [[ -n "$2" && "$2" != --* ]]; then
-                CUSTOM_BACKUP_DIR="$2"
-                # Mark that we're using a custom directory
+                _dir="${2/#\~/$HOME}"
+                CUSTOM_BACKUP_DIR=$(validate_path "$_dir" "dir") || { echo -e "${RED}Error: Invalid target path${NC}"; exit 1; }
                 IS_DEFAULT_BACKUP_DIR=false
                 shift 2
             else
@@ -119,6 +120,8 @@ done
 # Set source and backup directories (use custom if provided, otherwise default)
 SOURCE_DIR="${CUSTOM_SOURCE_DIR:-$DEFAULT_SOURCE_DIR}"
 BACKUP_DIR="${CUSTOM_BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"
+CLEANUP_TEST_FILE=""
+trap 'rm -f "$CLEANUP_TEST_FILE" 2>/dev/null' EXIT
 
 # Banner and introduction
 echo -e "\n${CYAN}===== WebDev Backup Cleanup Tool =====${NC}"
@@ -188,13 +191,13 @@ section() {
     echo -e "\n${YELLOW}===== $1 =====${NC}"
 }
 
-# Function to run commands with dry run support
+# Function to run commands with dry run support (uses "$@" directly, avoids injection)
 run_cmd() {
     if [ "$DRY_RUN" = true ]; then
-        echo -e "${YELLOW}DRY RUN: Would execute: $1${NC}"
+        echo -e "${YELLOW}DRY RUN: Would execute: $*${NC}"
         return 0
     else
-        eval "$1"
+        "$@"
         return $?
     fi
 }
@@ -252,7 +255,7 @@ if [ ! -d "$BACKUP_DIR" ]; then
     echo -e "${YELLOW}Backup directory does not exist: $BACKUP_DIR${NC}"
     
     if confirm "Would you like to create it?"; then
-        if run_cmd "mkdir -p \"$BACKUP_DIR\""; then
+        if run_cmd mkdir -p "$BACKUP_DIR"; then
             echo -e "${GREEN}✓ Created backup directory: $BACKUP_DIR${NC}"
         else
             echo -e "${RED}ERROR: Failed to create backup directory: $BACKUP_DIR${NC}"
@@ -268,10 +271,11 @@ fi
 
 # Test target volume accessibility
 section "Testing Backup Volume"
-TEST_FILE="$BACKUP_DIR/.write_test_$(date +%s)"
-if run_cmd "touch \"$TEST_FILE\" 2>/dev/null"; then
+CLEANUP_TEST_FILE="$BACKUP_DIR/.write_test_$(date +%s)"
+if run_cmd touch "$CLEANUP_TEST_FILE" 2>/dev/null; then
     echo -e "${GREEN}✓ Backup volume is accessible and writable${NC}"
-    run_cmd "rm -f \"$TEST_FILE\""
+    run_cmd rm -f "$CLEANUP_TEST_FILE"
+    CLEANUP_TEST_FILE=""
 else
     echo -e "${RED}ERROR: Cannot write to backup volume: $BACKUP_DIR${NC}"
     echo -e "Please check volume mount status and permissions"
@@ -283,7 +287,7 @@ section "Managing Log Directories"
 
 # Ensure log directories exist
 echo "Checking log and test directories..."
-if run_cmd "mkdir -p \"$LOGS_DIR\" \"$TEST_DIR\""; then
+if run_cmd mkdir -p "$LOGS_DIR" "$TEST_DIR"; then
     echo -e "${GREEN}✓ Log directories are ready${NC}"
 else
     echo -e "${RED}ERROR: Failed to create log directories${NC}"
@@ -291,7 +295,7 @@ else
 fi
 
 # Create placeholders
-run_cmd "touch \"$LOGS_DIR/.gitkeep\" \"$TEST_DIR/.gitkeep\""
+run_cmd touch "$LOGS_DIR/.gitkeep" "$TEST_DIR/.gitkeep"
 
 # Clean up logs
 section "Cleaning Logs"
@@ -301,17 +305,17 @@ if [ "$LOGS_BACKUP" = true ]; then
     LOGS_BACKUP_DIR="$BACKUP_DIR/logs_backup_$(date +$DATE_FORMAT)"
     echo "Backing up logs to $LOGS_BACKUP_DIR..."
     
-    if run_cmd "mkdir -p \"$LOGS_BACKUP_DIR\""; then
+    if run_cmd mkdir -p "$LOGS_BACKUP_DIR"; then
         # Copy logs
-        if run_cmd "cp -r \"$LOGS_DIR\"/* \"$LOGS_BACKUP_DIR/\" 2>/dev/null"; then
+        if run_cmd cp -r "$LOGS_DIR"/* "$LOGS_BACKUP_DIR/" 2>/dev/null; then
             echo -e "${GREEN}✓ Logs backed up successfully${NC}"
         else
             echo -e "${YELLOW}No logs to back up or backup failed${NC}"
         fi
         
         # Copy test logs
-        if run_cmd "mkdir -p \"$LOGS_BACKUP_DIR/tests\""; then
-            if run_cmd "cp -r \"$TEST_DIR\"/*.log \"$LOGS_BACKUP_DIR/tests/\" 2>/dev/null"; then
+        if run_cmd mkdir -p "$LOGS_BACKUP_DIR/tests"; then
+            if run_cmd cp -r "$TEST_DIR"/*.log "$LOGS_BACKUP_DIR/tests/" 2>/dev/null; then
                 echo -e "${GREEN}✓ Test logs backed up successfully${NC}"
             else
                 echo -e "${YELLOW}No test logs to back up or backup failed${NC}"
@@ -336,7 +340,7 @@ if [ "$LOGS_REMOVE_ALL" = true ]; then
             for log_file in $BACKUP_LOGS; do
                 log_name=$(basename "$log_file")
                 if confirm "Delete log: $log_name?" "y"; then
-                    run_cmd "rm -f \"$log_file\""
+                    run_cmd rm -f "$log_file"
                     echo -e "${GREEN}  ✓ Deleted: $log_name${NC}"
                 else
                     echo -e "${YELLOW}  ✗ Kept: $log_name${NC}"
@@ -352,7 +356,7 @@ if [ "$LOGS_REMOVE_ALL" = true ]; then
             for log_file in $TEST_LOGS; do
                 log_name=$(basename "$log_file")
                 if confirm "Delete test log: $log_name?" "y"; then
-                    run_cmd "rm -f \"$log_file\""
+                    run_cmd rm -f "$log_file"
                     echo -e "${GREEN}  ✓ Deleted: $log_name${NC}"
                 else
                     echo -e "${YELLOW}  ✗ Kept: $log_name${NC}"
@@ -378,9 +382,9 @@ elif [ -n "$LOGS_OLDER_THAN" ]; then
         # Process each old backup log file with confirmation
         for log_file in $OLD_BACKUP_LOGS; do
             log_name=$(basename "$log_file")
-            log_date=$(date -r "$log_file" "+%Y-%m-%d")
+            log_date=$(format_file_date "$log_file" "%Y-%m-%d")
             if confirm "Delete old log ($log_date): $log_name?" "y"; then
-                run_cmd "rm -f \"$log_file\""
+                run_cmd rm -f "$log_file"
                 echo -e "${GREEN}  ✓ Deleted: $log_name${NC}"
             else
                 echo -e "${YELLOW}  ✗ Kept: $log_name${NC}"
@@ -393,9 +397,9 @@ elif [ -n "$LOGS_OLDER_THAN" ]; then
         # Process each old test log file with confirmation
         for log_file in $OLD_TEST_LOGS; do
             log_name=$(basename "$log_file")
-            log_date=$(date -r "$log_file" "+%Y-%m-%d")
+            log_date=$(format_file_date "$log_file" "%Y-%m-%d")
             if confirm "Delete old test log ($log_date): $log_name?" "y"; then
-                run_cmd "rm -f \"$log_file\""
+                run_cmd rm -f "$log_file"
                 echo -e "${GREEN}  ✓ Deleted: $log_name${NC}"
             else
                 echo -e "${YELLOW}  ✗ Kept: $log_name${NC}"
@@ -413,7 +417,7 @@ else
     # Process backup history log
     if [ -f "$BACKUP_HISTORY_LOG" ]; then
         if confirm "Trim backup history log to keep only recent entries?" "y"; then
-            if run_cmd "awk 'BEGIN {count=0} /^[0-9]{4}-[0-9]{2}-[0-9]{2}/ {count++} count > 5 {next} {print}' \"$BACKUP_HISTORY_LOG\" > \"$BACKUP_HISTORY_LOG.tmp\" && mv \"$BACKUP_HISTORY_LOG.tmp\" \"$BACKUP_HISTORY_LOG\""; then
+            if run_cmd bash -c 'awk '\''BEGIN {count=0} /^[0-9]{4}-[0-9]{2}-[0-9]{2}/ {count++} count > 5 {next} {print}'\'' "$1" > "$1.tmp" && mv "$1.tmp" "$1"' _ "$BACKUP_HISTORY_LOG"; then
                 echo -e "${GREEN}✓ Trimmed backup history log to recent entries${NC}"
             fi
         else
@@ -424,7 +428,7 @@ else
     # Process test history log
     if [ -f "$TEST_HISTORY_LOG" ]; then
         if confirm "Trim test history log to keep only recent entries?" "y"; then
-            if run_cmd "awk 'BEGIN {count=0} /^[0-9]{4}-[0-9]{2}-[0-9]{2}/ {count++} count > 5 {next} {print}' \"$TEST_HISTORY_LOG\" > \"$TEST_HISTORY_LOG.tmp\" && mv \"$TEST_HISTORY_LOG.tmp\" \"$TEST_HISTORY_LOG\""; then
+            if run_cmd bash -c 'awk '\''BEGIN {count=0} /^[0-9]{4}-[0-9]{2}-[0-9]{2}/ {count++} count > 5 {next} {print}'\'' "$1" > "$1.tmp" && mv "$1.tmp" "$1"' _ "$TEST_HISTORY_LOG"; then
                 echo -e "${GREEN}✓ Trimmed test history log to recent entries${NC}"
             fi
         else
@@ -451,9 +455,9 @@ else
             # Remove old logs with confirmation
             for log in $OLD_TEST_LOGS; do
                 log_name=$(basename "$log")
-                log_date=$(date -r "$log" "+%Y-%m-%d")
+                log_date=$(format_file_date "$log" "%Y-%m-%d")
                 if confirm "Delete old test run log ($log_date): $log_name?" "y"; then
-                    run_cmd "rm -f \"$log\""
+                    run_cmd rm -f "$log"
                     echo -e "${GREEN}  ✓ Deleted: $log_name${NC}"
                 else
                     echo -e "${YELLOW}  ✗ Kept: $log_name${NC}"
@@ -478,7 +482,7 @@ else
             for dir in $OLD_TEST_DIRS; do
                 dir_name=$(basename "$dir")
                 if confirm "Delete old test directory: $dir_name?" "y"; then
-                    run_cmd "rm -rf \"$dir\""
+                    run_cmd rm -rf "$dir"
                     echo -e "${GREEN}  ✓ Deleted: $dir_name${NC}"
                 else
                     echo -e "${YELLOW}  ✗ Kept: $dir_name${NC}"
@@ -526,7 +530,7 @@ elif [ "$CLEAR_BACKUPS" = true ]; then
                     
                     # Default to "no" for individual confirmations as well
                     if confirm "Delete backup folder from $folder_date?" "n"; then
-                        run_cmd "rm -rf \"$folder\""
+                        run_cmd rm -rf "$folder"
                         echo -e "${GREEN}  ✓ Deleted: $folder_name${NC}"
                     else
                         echo -e "${YELLOW}  ✗ Kept: $folder_name${NC}"
@@ -568,7 +572,7 @@ elif [ -d "$BACKUP_DIR" ]; then
                 dir_date=${dir_name#webdev_backup_}
                 dir_date=${dir_date#wsl2_backup_}
                 if confirm "Delete old backup from $dir_date?" "y"; then
-                    run_cmd "rm -rf \"$dir\""
+                    run_cmd rm -rf "$dir"
                     echo -e "${GREEN}  ✓ Deleted: $dir_name${NC}"
                 else
                     echo -e "${YELLOW}  ✗ Kept: $dir_name${NC}"
@@ -594,7 +598,7 @@ for script in "$BACKUP_SCRIPT" "$TEST_SCRIPT" "$RUN_TESTS_SCRIPT" "$CLEANUP_SCRI
     if [ -f "$script" ]; then
         if [ ! -x "$script" ]; then
             echo -e "${YELLOW}Script is not executable: $script${NC}"
-            if run_cmd "chmod +x \"$script\""; then
+            if run_cmd chmod +x "$script"; then
                 echo -e "${GREEN}✓ Fixed permissions for $script${NC}"
             else
                 echo -e "${RED}Failed to set executable permissions on $script${NC}"

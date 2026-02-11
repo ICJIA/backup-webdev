@@ -26,6 +26,9 @@ CUSTOM_SOURCE_DIRS=()
 DRY_RUN=false
 EXTERNAL_BACKUP=false  # Track if this is an external (cloud) backup
 QUICK_BACKUP=false     # --quick: same as silent but show per-folder progress like interactive
+EXCLUDE_FILE=""        # Temp file for exclusions; trap cleans on exit
+
+trap 'rm -f "${EXCLUDE_FILE}" 2>/dev/null' EXIT
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -120,8 +123,9 @@ while [[ $# -gt 0 ]]; do
             ;;
         --destination|--dest|-d)
             if [[ -n "$2" && "$2" != --* ]]; then
-                # Expand tilde in path
-                CUSTOM_BACKUP_DIR="${2/#\~/$HOME}"
+                # Expand tilde in path and validate (reject traversal, injection)
+                _dir="${2/#\~/$HOME}"
+                CUSTOM_BACKUP_DIR=$(validate_path "$_dir" "dir") || { echo -e "${RED}Error: Invalid destination path${NC}"; exit 1; }
                 shift 2
             else
                 echo -e "${RED}Error: Destination argument requires a directory path${NC}"
@@ -131,11 +135,12 @@ while [[ $# -gt 0 ]]; do
         --sources)
             if [[ -n "$2" ]]; then
                 IFS=',' read -ra custom_dirs <<< "$2"
-                for dir in "${custom_dirs[@]}"; do
-                    # Trim whitespace and expand tilde
-                    dir=$(echo "$dir" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                    dir="${dir/#\~/$HOME}"
-                    CUSTOM_SOURCE_DIRS+=("$dir")
+                for _dir in "${custom_dirs[@]}"; do
+                    # Trim whitespace, expand tilde, and validate (reject traversal, injection)
+                    _dir=$(echo "$_dir" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                    _dir="${_dir/#\~/$HOME}"
+                    _validated=$(validate_path "$_dir" "dir") || { echo -e "${RED}Error: Invalid source path: $_dir${NC}"; exit 1; }
+                    CUSTOM_SOURCE_DIRS+=("$_validated")
                 done
                 shift 2
             else
@@ -145,9 +150,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --source|-s)
             if [[ -n "$2" && "$2" != --* ]]; then
-                # Expand tilde in path
-                dir="${2/#\~/$HOME}"
-                CUSTOM_SOURCE_DIRS+=("$dir")
+                # Expand tilde in path and validate (reject traversal, injection)
+                _dir="${2/#\~/$HOME}"
+                _validated=$(validate_path "$_dir" "dir") || { echo -e "${RED}Error: Invalid source path${NC}"; exit 1; }
+                CUSTOM_SOURCE_DIRS+=("$_validated")
                 shift 2
             else
                 echo -e "${RED}Error: Source argument requires a directory path${NC}"
@@ -867,8 +873,8 @@ if [ "$SILENT_MODE" = false ]; then
     echo -e "${YELLOW}=============================================${NC}"
 fi
 
-# Generate HTML report (skip in dry-run)
-if [ "$DRY_RUN" != true ] && { [ "$SILENT_MODE" = false ] || [ -n "$EMAIL_NOTIFICATION" ]; }; then
+# Generate HTML report (skip in dry-run). Create when interactive, email requested, or when showing progress (e.g. --quick) so "view report" can be offered.
+if [ "$DRY_RUN" != true ] && { [ "$SILENT_MODE" = false ] || [ -n "$EMAIL_NOTIFICATION" ] || [ "$SHOW_PROGRESS" = true ]; }; then
     REPORT_FILE=$(create_backup_report \
         "$FULL_BACKUP_PATH" \
         "$SUCCESSFUL_PROJECTS" \
@@ -1039,10 +1045,10 @@ else
     fi
     echo -e "${CYAN}Finished at: $(date)${NC}\n"
     
-    # Ask if the user wants to view the report in browser
-    if [ "$DRY_RUN" != true ] && [ -f "$REPORT_FILE" ]; then
+    # Ask if the user wants to view the report in browser (default Y)
+    if [ "$DRY_RUN" != true ] && [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ]; then
         echo -e "\n${YELLOW}Would you like to view the backup report in your browser?${NC}"
-        if safe_confirm "Open report in browser?" "n"; then
+        if safe_confirm "Open report in browser?" "y"; then
             echo -e "${GREEN}Opening backup report in browser...${NC}"
             if open_in_browser "$REPORT_FILE"; then
                 echo -e "${GREEN}Report opened in browser.${NC}"

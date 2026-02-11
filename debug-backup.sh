@@ -60,7 +60,10 @@ for dir in "${DEFAULT_SOURCE_DIRS[@]}"; do
             echo "$project_list" | while read -r project; do
                 echo "  - $project"
             done
-            mapfile -t dir_projects < <(echo "$project_list")
+            dir_projects=()
+            while IFS= read -r project; do
+                [ -n "$project" ] && dir_projects+=("$project")
+            done < <(echo "$project_list")
             projects+=("${dir_projects[@]}")
         else
             echo "No projects found in $dir"

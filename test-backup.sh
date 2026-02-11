@@ -134,6 +134,14 @@ if [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "unit" ]; then
     run_test "Sanitize input: empty string" "result=\$(sanitize_input ''); [[ -z \"\$result\" ]]"
     run_test "Sanitize input strict: removes angle brackets" "result=\$(sanitize_input '<script>alert(1)</script>' 'true'); [[ \"\$result\" != *'<'* && \"\$result\" != *'>'* ]]"
     run_test "Sanitize input strict: removes braces/brackets" "result=\$(sanitize_input '{cmd}[0]!danger' 'true'); [[ \"\$result\" != *'{'* && \"\$result\" != *'['* && \"\$result\" != *'!'* ]]"
+    run_test "Config literal safety: accepts normal path" "is_safe_config_literal '/tmp/project_dir'; [[ \$? -eq 0 ]]"
+    run_test "Config literal safety: rejects single quote" "is_safe_config_literal \"/tmp/bad'path\"; [[ \$? -ne 0 ]]"
+
+    # --- sanitize_cron_backup_options ---
+    run_test "Cron options sanitizer: valid options pass" "result=\$(sanitize_cron_backup_options '--verify --compression 9 --source /tmp/proj'); [[ -n \"\$result\" && \"\$result\" == *'--verify'* && \"\$result\" == *'--compression'* ]]"
+    run_test "Cron options sanitizer: rejects shell metacharacters" "sanitize_cron_backup_options '--verify; rm -rf /' >/dev/null 2>&1; [[ \$? -ne 0 ]]"
+    run_test "Cron options sanitizer: rejects unknown flag" "sanitize_cron_backup_options '--not-a-real-flag' >/dev/null 2>&1; [[ \$? -ne 0 ]]"
+    run_test "Cron options sanitizer: rejects missing value" "sanitize_cron_backup_options '--compression' >/dev/null 2>&1; [[ \$? -ne 0 ]]"
 
     # --- validate_path ---
     run_test "Validate path: strips traversal" "result=\$(validate_path '../../etc/passwd' 'file'); [[ \"\$result\" != *'..'* ]]"
@@ -199,6 +207,9 @@ if [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "integration" ]; then
     mkdir -p "$TEST_PROJECT_DIR/project1/nested/node_modules/nested-pkg"
     echo "console.log('test');" > "$TEST_PROJECT_DIR/project1/src/app.js"
     echo "test data" > "$TEST_PROJECT_DIR/project1/README.md"
+    echo "API_KEY=test" > "$TEST_PROJECT_DIR/project1/.env"
+    echo '{"name":"test"}' > "$TEST_PROJECT_DIR/project1/package-lock.json"
+    echo "# yarn lock" > "$TEST_PROJECT_DIR/project1/yarn.lock"
     echo "package data" > "$TEST_PROJECT_DIR/project1/node_modules/some-package/index.js"
     echo "nested pkg data" > "$TEST_PROJECT_DIR/project1/nested/node_modules/nested-pkg/index.js"
     dd if=/dev/zero of="$TEST_PROJECT_DIR/project1/node_modules/big_file.bin" bs=1K count=10 2>/dev/null
@@ -233,6 +244,15 @@ if [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "integration" ]; then
         run_test "Backup contains source files" "
             backup_file=\$(find \"$TEST_DIR/backup\" -name '*.tar.gz' | head -1)
             [ -n \"\$backup_file\" ] && tar -tzf \"\$backup_file\" 2>/dev/null | grep -q 'app.js'
+        "
+
+        # --- .env and lockfiles included (reconstruct app after restore) ---
+        run_test "Backup includes .env and lockfiles" "
+            backup_file=\$(find \"$TEST_DIR/backup\" -name '*.tar.gz' -type f -print0 | xargs -0 ls -t 2>/dev/null | head -1)
+            if [ -z \"\$backup_file\" ]; then exit 1; fi
+            tar -tzf \"\$backup_file\" 2>/dev/null | grep -q '\.env' && \
+            tar -tzf \"\$backup_file\" 2>/dev/null | grep -q 'yarn.lock' && \
+            tar -tzf \"\$backup_file\" 2>/dev/null | grep -q 'package-lock.json'
         "
 
         # --- Extract / restore dry run ---

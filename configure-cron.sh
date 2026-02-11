@@ -53,9 +53,9 @@ get_current_interval() {
     local schedule=$(echo "$cron_line" | awk '{print $1, $2, $3, $4, $5}')
     
     # Try to determine interval
-    if [[ "$schedule" == "0 */72 * * *" ]]; then
+    if [[ "$schedule" == "0 0 */3 * *" || "$schedule" == "0 */72 * * *" ]]; then
         echo "72 hours"
-    elif [[ "$schedule" == "0 */24 * * *" ]]; then
+    elif [[ "$schedule" == "0 0 * * *" || "$schedule" == "0 */24 * * *" ]]; then
         echo "24 hours"
     elif [[ "$schedule" == "0 */12 * * *" ]]; then
         echo "12 hours"
@@ -106,7 +106,7 @@ case "$choice" in
         echo -e "\n${CYAN}Setting up automatic backup every 72 hours...${NC}"
         
         # Create new crontab
-        (crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT"; echo "$CRON_COMMENT"; echo "0 */72 * * * $BACKUP_SCRIPT --silent") > "$TMP_CRONTAB"
+        (crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT"; echo "$CRON_COMMENT"; echo "0 0 */3 * * $BACKUP_SCRIPT --silent") > "$TMP_CRONTAB"
         crontab "$TMP_CRONTAB"
         rm -f "$TMP_CRONTAB"
         
@@ -132,8 +132,8 @@ case "$choice" in
             1) SCHEDULE="0 */3 * * *" && INTERVAL="3 hours" ;;
             2) SCHEDULE="0 */6 * * *" && INTERVAL="6 hours" ;;
             3) SCHEDULE="0 */12 * * *" && INTERVAL="12 hours" ;;
-            4) SCHEDULE="0 */24 * * *" && INTERVAL="24 hours" ;;
-            5) SCHEDULE="0 */72 * * *" && INTERVAL="72 hours" ;;
+            4) SCHEDULE="0 0 * * *" && INTERVAL="24 hours" ;;
+            5) SCHEDULE="0 0 */3 * *" && INTERVAL="72 hours" ;;
             6) SCHEDULE="0 0 * * 0" && INTERVAL="weekly (Sunday midnight)" ;;
             7) SCHEDULE="0 0 1 * *" && INTERVAL="monthly (1st day)" ;;
             8)
@@ -145,7 +145,7 @@ case "$choice" in
                 ;;
             *)
                 echo -e "${RED}Invalid choice. Using default schedule (every 72 hours).${NC}"
-                SCHEDULE="0 */72 * * *"
+                SCHEDULE="0 0 */3 * *"
                 INTERVAL="72 hours"
                 ;;
         esac
@@ -191,18 +191,25 @@ case "$choice" in
                     read -p "Schedule: " SCHEDULE
                     INTERVAL="custom ($SCHEDULE)"
                     ;;
-                *) SCHEDULE="0 */72 * * *" && INTERVAL="72 hours" ;;
+                *) SCHEDULE="0 0 */3 * *" && INTERVAL="72 hours" ;;
             esac
         fi
         
-        # Create new crontab with custom options
-        (crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT"; echo "$CRON_COMMENT"; echo "$SCHEDULE $BACKUP_SCRIPT --silent $custom_options") > "$TMP_CRONTAB"
+        SAFE_CUSTOM_OPTIONS=$(sanitize_cron_backup_options "$custom_options")
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}Error: Invalid or unsafe custom options.${NC}"
+            echo -e "${YELLOW}Use only supported backup flags and plain argument values.${NC}"
+            exit 1
+        fi
+
+        # Create new crontab with sanitized custom options
+        (crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT"; echo "$CRON_COMMENT"; echo "$SCHEDULE $BACKUP_SCRIPT --silent ${SAFE_CUSTOM_OPTIONS}") > "$TMP_CRONTAB"
         crontab "$TMP_CRONTAB"
         rm -f "$TMP_CRONTAB"
         
         echo -e "${GREEN}✓ Automatic backup enabled with custom options.${NC}"
         echo -e "${GREEN}✓ Schedule: $INTERVAL${NC}"
-        echo -e "${GREEN}✓ Command: $BACKUP_SCRIPT --silent $custom_options${NC}"
+        echo -e "${GREEN}✓ Command: $BACKUP_SCRIPT --silent ${SAFE_CUSTOM_OPTIONS}${NC}"
         ;;
     4)
         # Disable automatic backup
@@ -225,34 +232,23 @@ case "$choice" in
             # Extract cron schedule part
             CRON_SCHEDULE=$(echo "$CURRENT_CRON" | awk '{print $1, $2, $3, $4, $5}')
             
-            # Try to predict the next few runs
-            if command -v ncal >/dev/null 2>&1 && command -v date >/dev/null 2>&1; then
-                CURRENT_MONTH=$(date +%m)
-                CURRENT_YEAR=$(date +%Y)
+            # Try to predict the next few runs (cross-platform: date_add_* from utils.sh)
+            if command -v date >/dev/null 2>&1; then
                 # Simple prediction based on current schedule
-                # Note: This is a simplified approach and won't work for all cron schedules
-                if [[ "$CRON_SCHEDULE" == "0 */72 * * *" ]]; then
+                if [[ "$CRON_SCHEDULE" == "0 0 */3 * *" || "$CRON_SCHEDULE" == "0 */72 * * *" ]]; then
                     echo "Next backup in approximately 72 hours"
-                    NEXT_DATE=$(date -d "now + 72 hours" "+%Y-%m-%d %H:%M")
-                    echo "  $NEXT_DATE"
-                    NEXT_DATE=$(date -d "now + 144 hours" "+%Y-%m-%d %H:%M")
-                    echo "  $NEXT_DATE"
-                    NEXT_DATE=$(date -d "now + 216 hours" "+%Y-%m-%d %H:%M")
-                    echo "  $NEXT_DATE"
+                    echo "  $(date_add_hours 72)"
+                    echo "  $(date_add_hours 144)"
+                    echo "  $(date_add_hours 216)"
                 elif [[ "$CRON_SCHEDULE" == "0 0 * * *" ]]; then
                     echo "Backups will run daily at midnight"
-                    NEXT_DATE=$(date -d "tomorrow 00:00" "+%Y-%m-%d %H:%M")
-                    echo "  $NEXT_DATE"
-                    NEXT_DATE=$(date -d "tomorrow + 1 day 00:00" "+%Y-%m-%d %H:%M")
-                    echo "  $NEXT_DATE"
-                    NEXT_DATE=$(date -d "tomorrow + 2 day 00:00" "+%Y-%m-%d %H:%M")
-                    echo "  $NEXT_DATE"
+                    echo "  $(date_add_days 1 | sed 's/ [0-9][0-9]:[0-9][0-9]/ 00:00/')"
+                    echo "  $(date_add_days 2 | sed 's/ [0-9][0-9]:[0-9][0-9]/ 00:00/')"
+                    echo "  $(date_add_days 3 | sed 's/ [0-9][0-9]:[0-9][0-9]/ 00:00/')"
                 elif [[ "$CRON_SCHEDULE" == "0 0 * * 0" ]]; then
                     echo "Backups will run weekly on Sunday at midnight"
-                    NEXT_SUNDAY=$(date -d "next Sunday 00:00" "+%Y-%m-%d %H:%M")
-                    echo "  $NEXT_SUNDAY"
-                    NEXT_SUNDAY=$(date -d "next Sunday + 7 days 00:00" "+%Y-%m-%d %H:%M")
-                    echo "  $NEXT_SUNDAY"
+                    echo "  $(date_next_sunday)"
+                    echo "  $(date_next_sunday_plus_week)"
                 else
                     echo -e "${YELLOW}Cannot predict exact times for current schedule: $CRON_SCHEDULE${NC}"
                     echo "Current schedule: $CURRENT_INTERVAL"

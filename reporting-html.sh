@@ -17,8 +17,12 @@ create_backup_report() {
     local backup_type=${8:-"full"}
     local report_file=${9:-"$backup_dir/backup_report.html"}
     
-    # Calculate duration
-    local duration=$(( $(date -d "$end_time" +%s) - $(date -d "$start_time" +%s) ))
+    # Calculate duration (cross-platform: date_to_seconds from utils.sh)
+    local end_sec start_sec duration
+    end_sec=$(date_to_seconds "$end_time")
+    start_sec=$(date_to_seconds "$start_time")
+    duration=$(( end_sec - start_sec ))
+    [ "$duration" -lt 0 ] && duration=0
     local duration_str=$(printf "%02d:%02d:%02d" $(($duration/3600)) $(($duration%3600/60)) $(($duration%60)))
     
     # Create HTML report
@@ -251,7 +255,7 @@ create_backup_report() {
         <div class="summary">
             <h2>Backup Summary</h2>
             <p><strong>Date:</strong> $end_time</p>
-            <p><strong>Backup Type:</strong> ${backup_type^}</p>
+            <p><strong>Backup Type:</strong> $(capitalize "$backup_type")</p>
             <p><strong>Duration:</strong> $duration_str</p>
             <p><strong>Projects Processed:</strong> $(($successful + $failed))</p>
             <p><strong>Successfully Backed Up:</strong> <span class="success">$successful</span></p>
@@ -277,16 +281,14 @@ EOF
         echo "<table>" >> "$report_file"
         echo "<tr><th>Project</th><th>Source Size</th><th>Backup Size</th><th>Ratio</th></tr>" >> "$report_file"
         
-        # Group projects by source directory
-        # First, read all data into an array and group by source directory
-        declare -A projects_by_dir
-        declare -A dir_order
-        local dir_count=0
+        # Group projects by source directory (Bash 3.2 compatible: no associative arrays)
+        local dir_order=()
+        local dir_projects=()
         
         # Skip the header line (if there is one)
         local line_number=0
         
-        # First pass - build groups
+        # First pass - build groups using parallel indexed arrays
         while IFS=, read -r project full_project_path src_size archive_size ratio structure_file rest; do
             line_number=$((line_number + 1))
             
@@ -301,7 +303,8 @@ EOF
             fi
             
             # Get the source directory from the full path (parent directory)
-            local src_dir=$(dirname "$full_project_path")
+            local src_dir
+            src_dir=$(dirname "$full_project_path")
             
             # Make sure numeric values are valid
             # If sizes are missing or invalid, use a default
@@ -334,21 +337,30 @@ EOF
                 fi
             fi
             
-            # If this is the first project in this directory, add the directory to the order array
-            if [[ -z "${projects_by_dir[$src_dir]}" ]]; then
-                dir_order[$dir_count]="$src_dir"
-                dir_count=$((dir_count + 1))
+            # Find index of src_dir in dir_order, or add it
+            local found_idx=-1
+            local j
+            for ((j=0; j<${#dir_order[@]}; j++)); do
+                if [ "${dir_order[j]}" = "$src_dir" ]; then
+                    found_idx=$j
+                    break
+                fi
+            done
+            if [ $found_idx -lt 0 ]; then
+                dir_order=("${dir_order[@]}" "$src_dir")
+                dir_projects=("${dir_projects[@]}" "")
+                found_idx=$((${#dir_order[@]} - 1))
             fi
             
             # Add this project's data to the appropriate directory group
-            # We'll use a special delimiter "|||" to separate fields that won't appear in the data
-            projects_by_dir[$src_dir]+="$project|||$full_project_path|||$src_size|||$archive_size|||$ratio|||$structure_file;;;"
+            dir_projects[found_idx]="${dir_projects[found_idx]}$project|||$full_project_path|||$src_size|||$archive_size|||$ratio|||$structure_file;;;"
         done < "$stats_file"
         
         # Now iterate through directories in the order they were encountered
-        for ((i=0; i<dir_count; i++)); do
+        local i
+        for ((i=0; i<${#dir_order[@]}; i++)); do
             local current_dir="${dir_order[$i]}"
-            local projects="${projects_by_dir[$current_dir]}"
+            local projects="${dir_projects[$i]}"
             
             # Add a header row for this directory
             echo "<tr class=\"directory-header\">" >> "$report_file"
@@ -372,12 +384,16 @@ EOF
                 # Split the project data back into fields
                 IFS="|||" read -r project full_project_path src_size archive_size ratio structure_file <<< "$project_data"
                 
+                # Ensure numeric fields are valid (avoid path/string in arithmetic - Bash 3.2 compat)
+                [[ "$src_size" =~ ^[0-9]+$ ]] || src_size=0
+                [[ "$archive_size" =~ ^[0-9]+$ ]] || archive_size=0
+                
                 # Add row to table with data attribute for the project
                 echo "<tr data-project=\"$project\">" >> "$report_file"
                 echo "<td>$project</td>" >> "$report_file"
                 
                 # Get the actual file size from disk if the stats file has invalid data
-                if ! [[ "$src_size" =~ ^[0-9]+$ ]] || [ "$src_size" -eq 0 ]; then
+                if ! [[ "$src_size" =~ ^[0-9]+$ ]] || [ "x$src_size" = "x0" ]; then
                     # Look up the actual project on disk and get its size
                     if [ -d "$full_project_path" ]; then
                         src_size=$(get_file_size_bytes "$full_project_path")
@@ -405,7 +421,7 @@ EOF
                 echo "<td>$src_size_human</td>" >> "$report_file"
                 
                 # Get actual backup file size if the stats file has invalid data
-                if ! [[ "$archive_size" =~ ^[0-9]+$ ]] || [ "$archive_size" -eq 0 ]; then
+                if ! [[ "$archive_size" =~ ^[0-9]+$ ]] || [ "x$archive_size" = "x0" ]; then
                     # Look for the backup file
                     local backup_files=($FULL_BACKUP_PATH/${project}_*.tar.gz)
                     if [ ${#backup_files[@]} -gt 0 ] && [ -f "${backup_files[0]}" ]; then

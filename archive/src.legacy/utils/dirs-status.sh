@@ -26,8 +26,9 @@ TOTAL_SIZE=0
 VALID_DIRS=0
 INVALID_DIRS=0
 
-# Track project counts per directory
-declare -A PROJECT_COUNTS
+# Track project counts per directory (Bash 3.2 compatible; avoid associative arrays)
+PROJECT_DIR_NAMES=()
+PROJECT_DIR_COUNTS=()
 
 # Process each directory
 for ((i=0; i<${#DEFAULT_SOURCE_DIRS[@]}; i++)); do
@@ -38,10 +39,14 @@ for ((i=0; i<${#DEFAULT_SOURCE_DIRS[@]}; i++)); do
     
     # Check if directory exists and is readable
     if [ -d "$DIR" ] && [ -r "$DIR" ]; then
-        # Find all projects (subdirs)
-        readarray -t PROJECTS < <(find "$DIR" -maxdepth 1 -mindepth 1 -type d -not -path "*/\.*" | sort)
+        # Find all projects (subdirs) - Bash 3.2 compatible
+        PROJECTS=()
+        while IFS= read -r project_path; do
+            [ -n "$project_path" ] && PROJECTS+=("$project_path")
+        done < <(find "$DIR" -maxdepth 1 -mindepth 1 -type d -not -path "*/\.*" | sort)
         PROJECT_COUNT=${#PROJECTS[@]}
-        PROJECT_COUNTS["$DIR_NAME"]=$PROJECT_COUNT
+        PROJECT_DIR_NAMES+=("$DIR_NAME")
+        PROJECT_DIR_COUNTS+=("$PROJECT_COUNT")
         
         TOTAL_PROJECTS=$((TOTAL_PROJECTS + PROJECT_COUNT))
         VALID_DIRS=$((VALID_DIRS + 1))
@@ -86,8 +91,8 @@ echo "Total size (excluding node_modules): $(format_size "$TOTAL_SIZE")"
 
 echo
 echo -e "${CYAN}Projects by directory:${NC}"
-for DIR_NAME in "${!PROJECT_COUNTS[@]}"; do
-    echo "  $DIR_NAME: ${PROJECT_COUNTS[$DIR_NAME]} projects"
+for ((i=0; i<${#PROJECT_DIR_NAMES[@]}; i++)); do
+    echo "  ${PROJECT_DIR_NAMES[$i]}: ${PROJECT_DIR_COUNTS[$i]} projects"
 done
 
 exit 0

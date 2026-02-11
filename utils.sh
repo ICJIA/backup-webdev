@@ -56,6 +56,78 @@ detect_os() {
     esac
 }
 
+# Format Unix timestamp to readable datetime (cross-platform)
+# Usage: format_timestamp SECONDS [FMT]
+format_timestamp() {
+    local sec="${1:-0}"
+    local fmt="${2:-%Y-%m-%d %H:%M}"
+    if [ "$IS_MACOS" = true ]; then
+        date -r "$sec" "+$fmt" 2>/dev/null
+    else
+        date -d "@$sec" "+$fmt" 2>/dev/null
+    fi
+}
+
+# Add hours/days to now and return formatted datetime (cross-platform for cron prediction)
+# Usage: date_add_hours N  -> N hours from now; date_add_days N -> N days from now
+date_add_hours() {
+    local hours="${1:-0}"
+    local now=$(date +%s)
+    local then=$((now + hours * 3600))
+    format_timestamp "$then" "%Y-%m-%d %H:%M"
+}
+date_add_days() {
+    local days="${1:-0}"
+    local now=$(date +%s)
+    local then=$((now + days * 86400))
+    format_timestamp "$then" "%Y-%m-%d %H:%M"
+}
+# Next Sunday 00:00 (cross-platform)
+date_next_sunday() {
+    local w add_days
+    w=$(date +%u)  # 1=Mon .. 7=Sun
+    if [ "$w" -eq 7 ]; then
+        add_days=7
+    else
+        add_days=$((7 - w))
+    fi
+    local now=$(date +%s)
+    local then=$((now + add_days * 86400))
+    format_timestamp "$then" "%Y-%m-%d 00:00"
+}
+# Next Sunday + 7 days 00:00
+date_next_sunday_plus_week() {
+    local w add_days
+    w=$(date +%u)
+    if [ "$w" -eq 7 ]; then
+        add_days=7
+    else
+        add_days=$((7 - w))
+    fi
+    add_days=$((add_days + 7))
+    local now=$(date +%s)
+    local then=$((now + add_days * 86400))
+    format_timestamp "$then" "%Y-%m-%d 00:00"
+}
+
+# Parse datetime string to Unix seconds (cross-platform: macOS BSD date vs GNU date)
+# Input format: "%Y-%m-%d %H:%M:%S" (e.g. 2026-02-11 08:40:20)
+date_to_seconds() {
+    local datetime="${1:-}"
+    if [ -z "$datetime" ]; then
+        echo "0"
+        return
+    fi
+    case "$(uname -s)" in
+        Darwin*)
+            date -j -f "%Y-%m-%d %H:%M:%S" "$datetime" +%s 2>/dev/null || echo "0"
+            ;;
+        *)
+            date -d "$datetime" +%s 2>/dev/null || echo "0"
+            ;;
+    esac
+}
+
 # Get human-readable OS name and version (for display in app)
 # Examples: "macOS 15.0 (Darwin 24.0.0)" or "Ubuntu 22.04 (Linux 5.15.0)"
 get_os_version_display() {
@@ -313,7 +385,7 @@ section() {
     fi
 }
 
-# SECURITY IMPROVEMENT: Replace unsafe eval-based command execution with array-based approach
+# SECURITY IMPROVEMENT: Use array-based command execution approach
 run_cmd() {
     local cmd=("$@")
     
@@ -422,6 +494,60 @@ sanitize_input() {
     echo "$sanitized"
 }
 
+# Validate path text before writing into config.sh literal entries.
+# Reject quote and newline characters that could break shell syntax.
+is_safe_config_literal() {
+    local value="${1:-}"
+    case "$value" in
+        *\"*|*\'*|*$'\n'*|*$'\r'*)
+            return 1
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+# Sanitize and validate custom backup options for cron safety.
+# Returns shell-escaped options string (without leading/trailing spaces) on stdout.
+sanitize_cron_backup_options() {
+    local raw="${1:-}"
+    [ -z "$raw" ] && { echo ""; return 0; }
+
+    # Reject obvious shell metacharacters for cron command safety
+    case "$raw" in
+        *";"*|*"|"*|*"&"*|*\`*|*'$('*|*"<"*|*">"*|*$'\n'*|*$'\r'*)
+            return 1
+            ;;
+    esac
+
+    local out=""
+    local token next
+    set -- $raw
+    while [ $# -gt 0 ]; do
+        token="$1"
+        case "$token" in
+            --incremental|--differential|--verify|--no-verify|--thorough-verify|--quick|--silent|--dry-run|--external)
+                out="$out $(printf '%q' "$token")"
+                shift
+                ;;
+            --compression|--parallel|--email|--cloud|--source|--sources|--destination|--dest|--bandwidth)
+                next="$2"
+                [ -z "$next" ] && return 1
+                case "$next" in --*) return 1 ;; esac
+                out="$out $(printf '%q' "$token") $(printf '%q' "$next")"
+                shift 2
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    done
+
+    echo "${out# }"
+    return 0
+}
+
 # Verify directory exists and is accessible
 verify_directory() {
     local dir_path=$1
@@ -487,16 +613,6 @@ run_with_timeout() {
     else
         "$@"
     fi
-}
-
-# Portable: read lines into array (replaces mapfile/readarray for Bash 3.2)
-# Usage: read_lines_into_array ARRAY_NAME < input_or_pipe
-read_lines_into_array() {
-    local arr_name="$1"
-    eval "$arr_name=()"
-    while IFS= read -r line; do
-        eval "$arr_name+=(\"\$line\")"
-    done
 }
 
 # Portable: capitalize first letter (replaces ${var^} for Bash 3.2)
@@ -880,6 +996,20 @@ get_file_mtime() {
         stat -f %m "$file_path" 2>/dev/null
     else
         stat -c %Y "$file_path" 2>/dev/null
+    fi
+}
+
+# Format file modification date (cross-platform: macOS date -r vs Linux date -d)
+format_file_date() {
+    local file_path="$1"
+    local fmt="${2:-%Y-%m-%d}"
+    local mtime
+    mtime=$(get_file_mtime "$file_path")
+    [ -z "$mtime" ] && return 1
+    if [ "$IS_MACOS" = true ]; then
+        date -r "$mtime" "+$fmt" 2>/dev/null
+    else
+        date -d "@$mtime" "+$fmt" 2>/dev/null
     fi
 }
 

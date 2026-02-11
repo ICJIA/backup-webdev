@@ -10,6 +10,8 @@ source "$SCRIPT_DIR/fs.sh"
 
 # Default values
 LIST_BACKUPS=false
+RESTORE_TEMP=""  # Temp file for history log update; trap cleans on exit
+trap 'rm -f "$RESTORE_TEMP" 2>/dev/null' EXIT
 LATEST_BACKUP=true
 BACKUP_DATE=""
 PROJECT_NAME=""
@@ -66,7 +68,8 @@ while [[ $# -gt 0 ]]; do
             ;;
         -d|--dest)
             if [[ -n "$2" && "$2" != --* ]]; then
-                CUSTOM_RESTORE_DIR="$2"
+                _dir="${2/#\~/$HOME}"
+                CUSTOM_RESTORE_DIR=$(validate_path "$_dir" "dir") || { echo -e "${RED}Error: Invalid destination path${NC}"; exit 1; }
                 shift 2
             else
                 echo -e "${RED}Error: Destination argument requires a directory path${NC}"
@@ -75,7 +78,8 @@ while [[ $# -gt 0 ]]; do
             ;;
         -s|--source)
             if [[ -n "$2" && "$2" != --* ]]; then
-                CUSTOM_SOURCE_DIR="$2"
+                _dir="${2/#\~/$HOME}"
+                CUSTOM_SOURCE_DIR=$(validate_path "$_dir" "dir") || { echo -e "${RED}Error: Invalid source path${NC}"; exit 1; }
                 shift 2
             else
                 echo -e "${RED}Error: Source argument requires a directory path${NC}"
@@ -547,6 +551,13 @@ for project in "${PROJECTS_TO_RESTORE[@]}"; do
     
     # Restore the project
     if [ -n "$FILE_NAME" ]; then
+        # Reject path traversal in --file (security: prevent escaping restore directory)
+        if [[ "$FILE_NAME" == *".."* ]] || [[ "$FILE_NAME" == /* ]]; then
+            log "ERROR: Rejected unsafe file path: $FILE_NAME (path traversal or absolute path)" "$LOG_FILE"
+            echo -e "${RED}ERROR: Invalid file path. Path traversal (..) and absolute paths are not allowed.${NC}"
+            FAILED_RESTORES=$((FAILED_RESTORES + 1))
+            continue
+        fi
         # Restore just a specific file
         specific_path="$project/$FILE_NAME"
         if [ "$DRY_RUN" = true ]; then
@@ -655,9 +666,11 @@ RESTORE_HISTORY_LOG="$LOG_DIR/restore_history.log"
 if [ -f "$RESTORE_HISTORY_LOG" ]; then
     # Read existing log and prepend new entry
     TEMP_LOG=$(mktemp)
+    RESTORE_TEMP="$TEMP_LOG"
     echo -e "$RESTORE_ENTRY" > "$TEMP_LOG"
     cat "$RESTORE_HISTORY_LOG" >> "$TEMP_LOG"
     mv "$TEMP_LOG" "$RESTORE_HISTORY_LOG"
+    RESTORE_TEMP=""
 else
     # Create new log
     echo -e "$RESTORE_ENTRY" > "$RESTORE_HISTORY_LOG"

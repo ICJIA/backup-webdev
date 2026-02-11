@@ -124,8 +124,8 @@ while IFS= read -r file; do
 done < <(grep -r -l -E "(password|secret|credential|token|api.?key)\s*=\s*['\"][^\"'\$]+['\"]" --include="*.sh" "$SCRIPT_DIR" 2>/dev/null | grep -v -E '(archive/|secure-secrets\.sh|secrets\.sh\.example)')
 
 # Check for secure coding practices (exclude archive and allowlisted scripts)
-# Allowlist: test runners (eval of test command), security-audit (self), cleanup (single-arg callback), utils (read_lines_into_array)
-eval_allowlist="test-backup\.sh|run-all-tests\.sh|security-audit\.sh|cleanup\.sh|utils\.sh"
+# Allowlist: test runners (eval of test command), security-audit (self)
+eval_allowlist="test-backup\.sh|run-all-tests\.sh|security-audit\.sh"
 echo -e "${GREEN}Checking for insecure coding practices...${NC}"
 while IFS= read -r file; do
     basename_file=$(basename "$file")

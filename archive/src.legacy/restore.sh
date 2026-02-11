@@ -112,8 +112,11 @@ echo -e "${CYAN}Started at: $(date)${NC}\n"
 if [ "$LIST_BACKUPS" = true ]; then
     echo -e "${YELLOW}Available Backups:${NC}"
     
-    # Find all backup directories
-    mapfile -t backup_dirs < <(find "$BACKUP_DIR" -maxdepth 1 -type d -name "wsl2_backup_*" | sort -r)
+    # Find all backup directories (Bash 3.2 compatible)
+    backup_dirs=()
+    while IFS= read -r backup_dir; do
+        [ -n "$backup_dir" ] && backup_dirs+=("$backup_dir")
+    done < <(find "$BACKUP_DIR" -maxdepth 1 -type d -name "wsl2_backup_*" | sort -r)
     
     if [ ${#backup_dirs[@]} -eq 0 ]; then
         echo -e "${RED}No backups found in $BACKUP_DIR${NC}"
@@ -189,8 +192,11 @@ if [ "$DRY_RUN" = true ]; then
     log "Dry run mode: Showing what would be done, no actual restore" "$LOG_FILE"
 fi
 
-# Find available projects in the backup
-mapfile -t available_projects < <(find "$BACKUP_TO_RESTORE" -maxdepth 1 -type f -name "*.tar.gz" | sed -n 's/.*\/\([^_]*\)_.*/\1/p' | sort -u)
+# Find available projects in the backup (Bash 3.2 compatible)
+available_projects=()
+while IFS= read -r project_name; do
+    [ -n "$project_name" ] && available_projects+=("$project_name")
+done < <(find "$BACKUP_TO_RESTORE" -maxdepth 1 -type f -name "*.tar.gz" | sed -n 's/.*\/\([^_]*\)_.*/\1/p' | sort -u)
 
 if [ ${#available_projects[@]} -eq 0 ]; then
     # Special handling for dry-run mode
