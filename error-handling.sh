@@ -40,8 +40,9 @@ GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# Central error handling function
-handle_error() {
+# Central error reporting function (with severity levels and caller info).
+# For a simple "log and exit" see handle_error() in utils.sh.
+report_error() {
     local code="${1:-99}"
     local message="${2:-Unknown error}"
     local log_file="${3:-$ERROR_LOG}"
@@ -115,12 +116,12 @@ handle_error() {
 
 # Function to log a warning (non-critical issue)
 log_warning() {
-    handle_error 1 "$1" "$ERROR_LOG" false $ERROR_WARNING
+    report_error 1 "$1" "$ERROR_LOG" false $ERROR_WARNING
 }
 
 # Function to log an informational message
 log_info() {
-    handle_error 1 "$1" "$ERROR_LOG" false $ERROR_INFO
+    report_error 1 "$1" "$ERROR_LOG" false $ERROR_INFO
 }
 
 # Function to verify external dependencies and log appropriate errors
@@ -134,7 +135,7 @@ verify_dependencies() {
     done
     
     if [ ${#missing_deps[@]} -gt 0 ]; then
-        handle_error 3 "Missing required dependencies: ${missing_deps[*]}" "$ERROR_LOG" false $ERROR_CRITICAL
+        report_error 3 "Missing required dependencies: ${missing_deps[*]}" "$ERROR_LOG" false $ERROR_CRITICAL
         return 1
     fi
     
@@ -149,7 +150,7 @@ check_fs_access() {
     
     if [ ! -e "$path" ]; then
         if [ "$is_critical" = true ]; then
-            handle_error 2 "Path does not exist: $path" "$ERROR_LOG" false $ERROR_CRITICAL
+            report_error 2 "Path does not exist: $path" "$ERROR_LOG" false $ERROR_CRITICAL
         else
             log_warning "Path does not exist: $path"
         fi
@@ -160,7 +161,7 @@ check_fs_access() {
         read)
             if [ ! -r "$path" ]; then
                 if [ "$is_critical" = true ]; then
-                    handle_error 4 "No read permission for: $path" "$ERROR_LOG" false $ERROR_CRITICAL
+                    report_error 4 "No read permission for: $path" "$ERROR_LOG" false $ERROR_CRITICAL
                 else
                     log_warning "No read permission for: $path"
                 fi
@@ -170,7 +171,7 @@ check_fs_access() {
         write)
             if [ ! -w "$path" ]; then
                 if [ "$is_critical" = true ]; then
-                    handle_error 4 "No write permission for: $path" "$ERROR_LOG" false $ERROR_CRITICAL
+                    report_error 4 "No write permission for: $path" "$ERROR_LOG" false $ERROR_CRITICAL
                 else
                     log_warning "No write permission for: $path"
                 fi
@@ -180,7 +181,7 @@ check_fs_access() {
         execute)
             if [ ! -x "$path" ]; then
                 if [ "$is_critical" = true ]; then
-                    handle_error 4 "No execute permission for: $path" "$ERROR_LOG" false $ERROR_CRITICAL
+                    report_error 4 "No execute permission for: $path" "$ERROR_LOG" false $ERROR_CRITICAL
                 else
                     log_warning "No execute permission for: $path"
                 fi
@@ -221,6 +222,6 @@ log_script_end() {
 }
 
 # Export functions for use in other scripts
-export -f handle_error log_warning log_info
+export -f report_error log_warning log_info
 export -f verify_dependencies check_fs_access
 export -f log_script_start log_script_end

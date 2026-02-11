@@ -30,5 +30,24 @@ jobs:
             bash -n "$script"
           done < <(find . -type f -name "*.sh")
 
+      - name: Install shellcheck
+        run: |
+          if [ "$(uname -s)" = "Darwin" ]; then
+            brew install shellcheck
+          else
+            sudo apt-get update && sudo apt-get install -y shellcheck
+          fi
+
+      - name: Shellcheck lint (active scripts)
+        run: |
+          set -e
+          # SC2034: unused variables (many are exported/sourced across files)
+          # SC1090: can't follow non-constant source (our source "$SCRIPT_DIR/..." pattern)
+          # SC1091: not following sourced file (same reason)
+          # SC2086: double-quote to prevent globbing (intentional word-splitting in places)
+          while IFS= read -r script; do
+            shellcheck -s bash -e SC2034,SC1090,SC1091,SC2086 "$script" || exit 1
+          done < <(find . -type f -name "*.sh" ! -path "*/archive/*")
+
       - name: Run full test suite
         run: ./run-tests.sh

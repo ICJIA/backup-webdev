@@ -60,7 +60,7 @@ display_current_config
 echo -e "${YELLOW}Source Directories:${NC}"
 if [ ${#DEFAULT_SOURCE_DIRS[@]} -gt 0 ]; then
     for ((i=0; i<${#DEFAULT_SOURCE_DIRS[@]}; i++)); do
-        echo -e "- [${i}] ${DEFAULT_SOURCE_DIRS[$i]} ($(realpath "${DEFAULT_SOURCE_DIRS[$i]}"))"
+        echo -e "- [${i}] ${DEFAULT_SOURCE_DIRS[$i]} ($(abs_path "${DEFAULT_SOURCE_DIRS[$i]}"))"
         
         # Check if projects exist in source directory
         if [ -d "${DEFAULT_SOURCE_DIRS[$i]}" ]; then
@@ -153,7 +153,7 @@ case "$choice" in
         ;;
     2)
         echo -e "\n${CYAN}Select backup storage type:${NC}"
-        echo "1) Local Project Storage (Default: $(realpath "${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"))"
+        echo "1) Local Project Storage (Default: $(abs_path "${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"))"
         echo "2) External Volume Storage (Custom local path)"
         echo "3) Cloud Storage (DigitalOcean, AWS, etc.)"
         read -p "Enter your choice [1/2/3]: " storage_choice

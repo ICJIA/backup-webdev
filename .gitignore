@@ -48,10 +48,16 @@ secrets.sh
 # Credentials and secrets
 .secrets.checksum
 
+# Runtime state (first-run marker)
+.configured
+
+# Encryption keys and credentials (created by encryption.sh)
+/encryption/
+
 # Allow example files
 !*.example
 
 # Archive directory
 # Note: The archive/ directory contains legacy code and is kept in git for reference.
-# Test scripts in archive/src.legacy/test/ are still actively used.
+# Active test scripts have been moved to test/ at the project root.
 #archive/

@@ -5,10 +5,10 @@ This directory contains test results and logs for the WebDev Backup Tool.
 ## Contents
 
 - **Test History**: A chronological log of all test runs in `test_history.log`
-- **Backup Test Results**: Individual backup test runs in `webdev_test_*` directories
-- **Cron Test Results**: Cron functionality test runs in `cron_test_*` directories
-- **Comprehensive Test Logs**: Results from the full test suite in `test_run_*.log` files
-- **Test Configuration**: Default test settings for the backup tool
+- **Backup Test Results**: Individual backup test runs in `test_project_*` directories (created and cleaned up by integration tests)
+- **Cron Test Results**: Cron functionality test runs (from `npm run test:cron`) in `cron_test_*` directories
+- **Test Logs**: Results from the full test suite in `test_log_*.log` files
+- **Test Configuration**: Default test settings for the backup tool (uses `test/` and `test/backup_out` when RUNNING_TESTS=1)
 
 ## Running Tests
 
@@ -20,27 +20,26 @@ To run the backup functionality tests:
 ../test-backup.sh
 ```
 
-You can specify a custom source directory for testing:
-
-```bash
-../test-backup.sh --source /path/to/custom/source
-```
+Integration tests create their own source directories. For manual backup testing with a custom source, run `../backup.sh --source /path/to/projects --destination ../test/backup --dry-run`.
 
 ### Cron Testing
 
 To test the cron functionality (without modifying your actual crontab):
 
 ```bash
-../test-cron.sh
+npm run test:cron
+# or: ../archive/src.legacy/test/test-cron.sh
 ```
 
-### Comprehensive Testing
+### Full Test Suite (unit + integration + security)
 
-To run all tests at once, including backup tests, cron tests, and more:
+To run all tests at once (48 tests; does not include cron or tar tests):
 
 ```bash
 ../run-tests.sh
 ```
+
+For cron or tar compatibility tests: `npm run test:cron`, `npm run test:tar`
 
 ## Test Log
 

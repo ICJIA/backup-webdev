@@ -1,7 +1,7 @@
 # WebDev Backup Tool - Architecture
 
 **Version:** 1.7.0  
-**Last Updated:** 2025-03-30
+**Last Updated:** 2026-02-11
 
 ## System Overview
 
@@ -80,6 +80,30 @@ webdev-backup.sh (Menu/Launcher)
     │
     └──► Other scripts...
 ```
+
+## Module Map
+
+Quick reference for which scripts source which modules:
+
+| Script | Sources | Purpose |
+|--------|---------|---------|
+| `webdev-backup.sh` | config, utils, ui, reporting | Main menu; routes to other scripts |
+| `backup.sh` | config, utils, ui, fs, reporting | Core backup execution |
+| `restore.sh` | utils, ui, fs | Restore from archives |
+| `quick-backup.sh` | config, utils, ui, fs, reporting | One-command quick backup |
+| `cleanup.sh` | config, utils, error-handling | Remove old backups/logs |
+| `configure-cron.sh` | config, utils, ui | Cron schedule setup |
+| `run-tests.sh` | config, utils | Test runner orchestration |
+| `test-backup.sh` | config, utils, fs, ui | Unit + integration tests |
+| `test/test-cron.sh` | config, utils, ui | Cron functionality tests |
+| `test/test-tar-compatibility.sh` | config, utils, ui, fs | Tar compatibility tests |
+
+### Script Structure Headers
+
+Large scripts follow this internal structure for easier navigation:
+
+- **backup.sh**: (1) Parse CLI args → (2) Validate config & discover projects → (3) Main backup loop per project → (4) Reports & history
+- **utils.sh**: Path helpers → OS/time utilities → Formatting → Logging → Validation → Backup verification → Email
 
 ## Key Components
 
@@ -190,10 +214,15 @@ webdev-backup.sh (Menu/Launcher)
 ```
 backup-webdev/
 ├── webdev-backup.sh      # Main entry point
-├── backup.sh             # Core backup
+├── backup.sh             # Core backup (sources parse-backup-args.sh)
+├── parse-backup-args.sh  # CLI argument parsing for backup
 ├── restore.sh            # Restoration
 ├── config.sh             # Configuration
-├── utils.sh              # Utilities
+├── utils.sh               # Utilities (sources utils-os, utils-time, utils-path, utils-format)
+├── utils-os.sh            # OS detection
+├── utils-time.sh          # Date/time utilities
+├── utils-path.sh          # Path helpers (abs_path, validate_path, get_file_size_bytes)
+├── utils-format.sh        # format_size, capitalize
 ├── fs.sh                 # Filesystem ops
 ├── ui.sh                 # User interface
 ├── reporting.sh          # Reports
@@ -212,7 +241,7 @@ archive/
     ├── ui/
     ├── reports/
     ├── security/
-    ├── test/             # Still referenced
+    ├── test/             # Archived (active tests moved to root test/)
     └── setup/
 ```
 

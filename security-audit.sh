@@ -125,7 +125,7 @@ done < <(grep -r -l -E "(password|secret|credential|token|api.?key)\s*=\s*['\"][
 
 # Check for secure coding practices (exclude archive and allowlisted scripts)
 # Allowlist: test runners (eval of test command), security-audit (self)
-eval_allowlist="test-backup\.sh|run-all-tests\.sh|security-audit\.sh"
+eval_allowlist="test-backup\.sh|test-tar-compatibility\.sh|security-audit\.sh"
 echo -e "${GREEN}Checking for insecure coding practices...${NC}"
 while IFS= read -r file; do
     basename_file=$(basename "$file")

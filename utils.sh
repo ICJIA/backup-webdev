@@ -3,6 +3,9 @@
 # This file contains common functions used across all scripts
 #
 # SCRIPT TYPE: Module (sourced by other scripts, not executed directly)
+#
+# STRUCTURE: Path helpers → OS/time utilities → Formatting → Logging →
+#            Validation → Backup verification → Email
 
 # Set restrictive umask to ensure secure file creation
 umask 027
@@ -38,166 +41,11 @@ if [ -f "$SCRIPT_DIR/secrets.sh" ]; then
     source "$SCRIPT_DIR/secrets.sh"
 fi
 
-# OS Detection - Cross-platform compatibility
-detect_os() {
-    case "$(uname -s)" in
-        Darwin*)
-            echo "macOS"
-            ;;
-        Linux*)
-            echo "Linux"
-            ;;
-        MINGW*|MSYS*|CYGWIN*)
-            echo "Windows"
-            ;;
-        *)
-            echo "Unknown"
-            ;;
-    esac
-}
-
-# Format Unix timestamp to readable datetime (cross-platform)
-# Usage: format_timestamp SECONDS [FMT]
-format_timestamp() {
-    local sec="${1:-0}"
-    local fmt="${2:-%Y-%m-%d %H:%M}"
-    if [ "$IS_MACOS" = true ]; then
-        date -r "$sec" "+$fmt" 2>/dev/null
-    else
-        date -d "@$sec" "+$fmt" 2>/dev/null
-    fi
-}
-
-# Add hours/days to now and return formatted datetime (cross-platform for cron prediction)
-# Usage: date_add_hours N  -> N hours from now; date_add_days N -> N days from now
-date_add_hours() {
-    local hours="${1:-0}"
-    local now=$(date +%s)
-    local then=$((now + hours * 3600))
-    format_timestamp "$then" "%Y-%m-%d %H:%M"
-}
-date_add_days() {
-    local days="${1:-0}"
-    local now=$(date +%s)
-    local then=$((now + days * 86400))
-    format_timestamp "$then" "%Y-%m-%d %H:%M"
-}
-# Next Sunday 00:00 (cross-platform)
-date_next_sunday() {
-    local w add_days
-    w=$(date +%u)  # 1=Mon .. 7=Sun
-    if [ "$w" -eq 7 ]; then
-        add_days=7
-    else
-        add_days=$((7 - w))
-    fi
-    local now=$(date +%s)
-    local then=$((now + add_days * 86400))
-    format_timestamp "$then" "%Y-%m-%d 00:00"
-}
-# Next Sunday + 7 days 00:00
-date_next_sunday_plus_week() {
-    local w add_days
-    w=$(date +%u)
-    if [ "$w" -eq 7 ]; then
-        add_days=7
-    else
-        add_days=$((7 - w))
-    fi
-    add_days=$((add_days + 7))
-    local now=$(date +%s)
-    local then=$((now + add_days * 86400))
-    format_timestamp "$then" "%Y-%m-%d 00:00"
-}
-
-# Parse datetime string to Unix seconds (cross-platform: macOS BSD date vs GNU date)
-# Input format: "%Y-%m-%d %H:%M:%S" (e.g. 2026-02-11 08:40:20)
-date_to_seconds() {
-    local datetime="${1:-}"
-    if [ -z "$datetime" ]; then
-        echo "0"
-        return
-    fi
-    case "$(uname -s)" in
-        Darwin*)
-            date -j -f "%Y-%m-%d %H:%M:%S" "$datetime" +%s 2>/dev/null || echo "0"
-            ;;
-        *)
-            date -d "$datetime" +%s 2>/dev/null || echo "0"
-            ;;
-    esac
-}
-
-# Get human-readable OS name and version (for display in app)
-# Examples: "macOS 15.0 (Darwin 24.0.0)" or "Ubuntu 22.04 (Linux 5.15.0)"
-get_os_version_display() {
-    local kernel_name kernel_release
-    kernel_name=$(uname -s)
-    kernel_release=$(uname -r 2>/dev/null)
-    
-    case "$kernel_name" in
-        Darwin*)
-            # macOS: use sw_vers for product name and version
-            if [ -x "/usr/bin/sw_vers" ]; then
-                local product_name product_version
-                product_name=$(sw_vers -productName 2>/dev/null)
-                product_version=$(sw_vers -productVersion 2>/dev/null)
-                if [ -n "$product_name" ] && [ -n "$product_version" ]; then
-                    echo "${product_name} ${product_version} (Darwin ${kernel_release})"
-                    return
-                fi
-            fi
-            echo "macOS (Darwin ${kernel_release})"
-            ;;
-        Linux*)
-            # Linux: try /etc/os-release first, then lsb_release
-            if [ -f /etc/os-release ]; then
-                local pretty_name version_id
-                pretty_name=$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2)
-                version_id=$(grep -E '^VERSION_ID=' /etc/os-release 2>/dev/null | cut -d'"' -f2)
-                if [ -n "$pretty_name" ]; then
-                    echo "${pretty_name} (Linux ${kernel_release})"
-                    return
-                fi
-                if [ -n "$version_id" ]; then
-                    local name=$(grep -E '^NAME=' /etc/os-release 2>/dev/null | cut -d'"' -f2)
-                    echo "${name} ${version_id} (Linux ${kernel_release})"
-                    return
-                fi
-            fi
-            if command -v lsb_release >/dev/null 2>&1; then
-                local desc
-                desc=$(lsb_release -ds 2>/dev/null | tr -d '"')
-                if [ -n "$desc" ]; then
-                    echo "${desc} (Linux ${kernel_release})"
-                    return
-                fi
-            fi
-            echo "Linux ${kernel_release}"
-            ;;
-        *)
-            echo "${kernel_name} ${kernel_release}"
-            ;;
-    esac
-}
-
-# Get OS type for compatibility checks
-OS_TYPE=$(detect_os)
-IS_MACOS=false
-IS_LINUX=false
-IS_WINDOWS=false
-
-case "$OS_TYPE" in
-    macOS)
-        IS_MACOS=true
-        ;;
-    Linux)
-        IS_LINUX=true
-        ;;
-    Windows)
-        IS_WINDOWS=true
-        ;;
-esac
+# Load utility submodules (order matters: os sets IS_MACOS used by time, path)
+source "$SCRIPT_DIR/utils-os.sh"
+source "$SCRIPT_DIR/utils-time.sh"
+source "$SCRIPT_DIR/utils-path.sh"
+source "$SCRIPT_DIR/utils-format.sh"
 
 # Terminal colors for better output
 RED='\033[0;31m'
@@ -295,28 +143,6 @@ display_current_config() {
     echo -e "${CYAN}Full Path:${NC}       $(cd "$DEFAULT_BACKUP_DIR" 2>/dev/null && pwd || echo "$DEFAULT_BACKUP_DIR (not created yet)")"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo
-}
-
-# Format size function (converts bytes to human readable format)
-format_size() {
-    local size=$1
-    awk '
-        BEGIN {
-            suffix[1] = "B"
-            suffix[2] = "KB"
-            suffix[3] = "MB"
-            suffix[4] = "GB"
-            suffix[5] = "TB"
-        }
-        {
-            for (i = 5; i > 0; i--) {
-                if ($1 >= 1024 ^ (i - 1)) {
-                    printf("%.2f %s", $1 / (1024 ^ (i - 1)), suffix[i])
-                    break
-                }
-            }
-        }
-    ' <<< "$size"
 }
 
 # Error handling function
@@ -430,45 +256,6 @@ safe_confirm() {
     fi
 }
 
-# SECURITY IMPROVEMENT: Comprehensive safe path handling function
-validate_path() {
-    local path="$1"
-    local type="$2"  # "dir" or "file"
-    
-    # First, check for null or empty path
-    if [ -z "$path" ]; then
-        echo "Error: Empty path provided"
-        return 1
-    fi
-    
-    # Remove any potential command injection characters
-    local sanitized_path=$(echo "$path" | tr -d ';&|$()`<>{}[]!?*#~')
-    
-    # Prevent directory traversal attempts
-    # Replace any instance of "../" or "..\\" with nothing
-    sanitized_path=$(echo "$sanitized_path" | sed 's|\.\./||g' | sed 's|\.\.\\||g')
-    
-    # Ensure it's an absolute path or relative to home for directories
-    if [ "$type" = "dir" ]; then
-        if [[ ! "$sanitized_path" =~ ^/ && ! "$sanitized_path" =~ ^~ ]]; then
-            echo "Error: Directory path must be absolute or relative to home"
-            return 1
-        fi
-        
-        # Check that the directory exists or can be created safely
-        if [ ! -d "$sanitized_path" ]; then
-            # Verify parent directory exists before allowing creation
-            local parent_dir=$(dirname "$sanitized_path")
-            if [ ! -d "$parent_dir" ]; then
-                echo "Error: Parent directory does not exist: $parent_dir"
-                return 1
-            fi
-        fi
-    fi
-    
-    echo "$sanitized_path"
-}
-
 # SECURITY IMPROVEMENT: Comprehensive function to sanitize input against command injection
 sanitize_input() {
     local input="$1"
@@ -548,7 +335,7 @@ sanitize_cron_backup_options() {
     return 0
 }
 
-# Verify directory exists and is accessible
+# Verify directory exists and is accessible (uses colors from this file)
 verify_directory() {
     local dir_path=$1
     local dir_type=$2
@@ -583,25 +370,6 @@ verify_directory() {
     return 0
 }
 
-# Get file size in bytes (cross-platform: macOS stat vs Linux du -b)
-get_file_size_bytes() {
-    local path="$1"
-    if [ ! -e "$path" ]; then
-        echo "0"
-        return
-    fi
-    if [ "$IS_MACOS" = true ]; then
-        if [ -f "$path" ]; then
-            stat -f %z "$path" 2>/dev/null || echo "0"
-        else
-            # Directory: use find + du -k (macOS du has no -b)
-            find "$path" -type f -exec du -k {} + 2>/dev/null | awk '{sum += $1} END {print sum * 1024}'
-        fi
-    else
-        du -sb "$path" 2>/dev/null | cut -f1
-    fi
-}
-
 # Run a command with optional timeout (timeout/gtimeout on Linux, no timeout on macOS if missing)
 run_with_timeout() {
     local seconds="$1"
@@ -613,11 +381,6 @@ run_with_timeout() {
     else
         "$@"
     fi
-}
-
-# Portable: capitalize first letter (replaces ${var^} for Bash 3.2)
-capitalize() {
-    echo "$1" | awk '{print toupper(substr($0,1,1)) substr($0,2)}'
 }
 
 # Hash stdin with SHA-256 (cross-platform: sha256sum vs shasum)
@@ -970,192 +733,6 @@ monitor_file_progress() {
     done
     
     printf "\n"
-}
-
-# Format time in seconds to readable format
-format_time() {
-    local seconds=$1
-    
-    if [ "$seconds" -lt 60 ]; then
-        echo "${seconds}s"
-    elif [ "$seconds" -lt 3600 ]; then
-        local m=$((seconds / 60))
-        local s=$((seconds % 60))
-        printf "%dm %ds" $m $s
-    else
-        local h=$((seconds / 3600))
-        local m=$(((seconds % 3600) / 60))
-        printf "%dh %dm" $h $m
-    fi
-}
-
-# Get file modification time as Unix timestamp (cross-platform)
-get_file_mtime() {
-    local file_path=$1
-    if [ "$IS_MACOS" = true ]; then
-        stat -f %m "$file_path" 2>/dev/null
-    else
-        stat -c %Y "$file_path" 2>/dev/null
-    fi
-}
-
-# Format file modification date (cross-platform: macOS date -r vs Linux date -d)
-format_file_date() {
-    local file_path="$1"
-    local fmt="${2:-%Y-%m-%d}"
-    local mtime
-    mtime=$(get_file_mtime "$file_path")
-    [ -z "$mtime" ] && return 1
-    if [ "$IS_MACOS" = true ]; then
-        date -r "$mtime" "+$fmt" 2>/dev/null
-    else
-        date -d "@$mtime" "+$fmt" 2>/dev/null
-    fi
-}
-
-# Compare two files to see if they're different (cross-platform)
-files_differ() {
-    local file1=$1
-    local file2=$2
-    
-    # If either file doesn't exist, they differ
-    if [[ ! -f "$file1" || ! -f "$file2" ]]; then
-        return 0  # true, they differ
-    fi
-    
-    # Check size first (quick comparison) - cross-platform
-    local size1
-    local size2
-    if [ "$IS_MACOS" = true ]; then
-        size1=$(stat -f %z "$file1" 2>/dev/null)
-        size2=$(stat -f %z "$file2" 2>/dev/null)
-    else
-        size1=$(stat -c %s "$file1" 2>/dev/null)
-        size2=$(stat -c %s "$file2" 2>/dev/null)
-    fi
-    
-    if [[ "$size1" != "$size2" ]]; then
-        return 0  # true, they differ
-    fi
-    
-    # Compare content
-    cmp -s "$file1" "$file2"
-    return $?  # 0 if same, 1 if different
-}
-
-# Get file permissions in octal format (cross-platform)
-get_file_permissions() {
-    local file_path=$1
-    if [ "$IS_MACOS" = true ]; then
-        stat -f %OLp "$file_path" 2>/dev/null
-    else
-        stat -c %a "$file_path" 2>/dev/null
-    fi
-}
-
-# SECURITY IMPROVEMENT: Secure way to check required tools
-check_required_tools() {
-    local missing_tools=()
-    
-    for tool in "$@"; do
-        if ! command -v "$tool" > /dev/null 2>&1; then
-            missing_tools+=("$tool")
-        fi
-    done
-    
-    if [ ${#missing_tools[@]} -gt 0 ]; then
-        echo "Error: Required tools not installed: ${missing_tools[*]}"
-        return 1
-    fi
-    
-    return 0
-}
-
-# Secure function to open a file in the default browser (in background)
-open_in_browser() {
-    local file_path="$1"
-    
-    # Sanitize the file path
-    file_path=$(validate_path "$file_path" "file")
-    
-    # Make sure the file exists
-    if [ ! -f "$file_path" ]; then
-        echo -e "${RED}Error: File not found: $file_path${NC}"
-        return 1
-    fi
-    
-    # Only allow specific file types for browser opening
-    local extension="${file_path##*.}"
-    local allowed_extensions=("html" "htm" "pdf" "txt" "md" "csv" "json" "xml")
-    local is_allowed=false
-    
-    for allowed in "${allowed_extensions[@]}"; do
-        if [ "$extension" == "$allowed" ]; then
-            is_allowed=true
-            break
-        fi
-    done
-    
-    if [ "$is_allowed" == "false" ]; then
-        echo -e "${RED}Error: Unsupported file type for browser opening: .$extension${NC}"
-        echo -e "${YELLOW}For security reasons, only certain file types can be opened in the browser.${NC}"
-        return 1
-    fi
-    
-    # Convert to file:// URL if it's a local path and doesn't already have a scheme
-    if [[ ! "$file_path" =~ ^[a-zA-Z]+:// ]]; then
-        # Make sure it's an absolute path
-        if [[ ! "$file_path" =~ ^/ ]]; then
-            file_path="$(pwd)/$file_path"
-        fi
-        file_path="file://$file_path"
-    fi
-    
-    # Create a temporary script to properly detach the browser process
-    local temp_script=$(mktemp)
-    chmod 700 "$temp_script"
-    
-    # Write the appropriate browser command to the script based on OS
-    echo "#!/bin/bash" > "$temp_script"
-    
-    if [ "$(uname)" == "Darwin" ]; then
-        # macOS
-        echo "open \"$file_path\" &>/dev/null &" >> "$temp_script"
-    elif [ "$(uname)" == "Linux" ]; then
-        # Linux - try different commands
-        echo "if command -v xdg-open &>/dev/null; then" >> "$temp_script"
-        echo "    nohup xdg-open \"$file_path\" &>/dev/null &" >> "$temp_script"
-        echo "elif command -v gnome-open &>/dev/null; then" >> "$temp_script"
-        echo "    nohup gnome-open \"$file_path\" &>/dev/null &" >> "$temp_script"
-        echo "elif command -v kde-open &>/dev/null; then" >> "$temp_script"
-        echo "    nohup kde-open \"$file_path\" &>/dev/null &" >> "$temp_script"
-        echo "elif command -v firefox &>/dev/null; then" >> "$temp_script"
-        echo "    nohup firefox \"$file_path\" &>/dev/null &" >> "$temp_script"
-        echo "elif command -v google-chrome &>/dev/null; then" >> "$temp_script"
-        echo "    nohup google-chrome \"$file_path\" &>/dev/null &" >> "$temp_script"
-        echo "else" >> "$temp_script"
-        echo "    echo \"No suitable browser found.\"" >> "$temp_script"
-        echo "    exit 1" >> "$temp_script"
-        echo "fi" >> "$temp_script"
-    elif [[ "$(uname)" == *"MINGW"* || "$(uname)" == *"MSYS"* || "$(uname)" == *"CYGWIN"* ]]; then
-        # Windows
-        echo "start \"\" \"$file_path\" &>/dev/null &" >> "$temp_script"
-    else
-        echo "echo \"Unknown OS. Cannot open browser automatically.\"" >> "$temp_script"
-        echo "exit 1" >> "$temp_script"
-    fi
-    
-    # Add self-cleanup to the script
-    echo "sleep 1" >> "$temp_script"
-    echo "rm -f \"$temp_script\"" >> "$temp_script"
-    
-    # Launch the script with nohup to completely detach from the parent process
-    nohup "$temp_script" >/dev/null 2>&1 &
-    
-    # Brief pause to allow the script to start executing
-    sleep 1
-    
-    return 0
 }
 
 # End of utility functions

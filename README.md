@@ -1,12 +1,10 @@
 # WebDev Backup Tool
 
-[![CI](https://github.com/USER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/REPO/actions/workflows/ci.yml)
+[![CI](https://github.com/ICJIA/backup-webdev/actions/workflows/ci.yml/badge.svg)](https://github.com/ICJIA/backup-webdev/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL2-blue.svg)](README.md#platform-verification-macos-linux-wsl2)
 [![Tests](https://img.shields.io/badge/tests-48%20passing-brightgreen.svg)](README.md#testing)
 [![Bash](https://img.shields.io/badge/Bash-3.2%2B-green.svg)](README.md#requirements)
-
-<!-- Replace USER/REPO in the CI badge with your GitHub org/repo -->
 
 <p align="center">
   <img src="assets/og-image.png" alt="WebDev Backup Tool" width="1200" />
@@ -19,7 +17,7 @@ A backup solution for web development projects: multiple source directories, ful
 Clone, run install (sets permissions, creates dirs, checks tools), run tests, edit config, then backup.
 
 ```bash
-git clone https://github.com/yourusername/backup-webdev.git
+git clone https://github.com/ICJIA/backup-webdev.git
 cd backup-webdev
 ./install.sh                    # Sets chmod +x, creates logs/test, checks tools (decline alias/security prompts if you prefer)
 ./run-tests.sh                  # Verify it works (48 tests, no config needed)
@@ -28,8 +26,7 @@ cd backup-webdev
 Edit `config.sh` — set your **source** and **destination** paths (see [Configuration](#configuration)):
 
 ```bash
-# In config.sh: DEFAULT_SOURCE_DIRS=("$HOME/Developer")  # or your project dirs
-#              DEFAULT_BACKUP_DIR="$HOME/backups"       # where to store backups
+# Defaults: $HOME and $HOME/backups — edit to narrow scope (e.g. $HOME/Developer, $HOME/projects)
 ```
 
 Then run:
@@ -66,7 +63,7 @@ Then run:
 
 ## Testing
 
-Tests run with no config (they use `test/` and `test-projects/`).
+Tests run with no config (RUNNING_TESTS uses `test/` and `test/backup_out`).
 
 ```bash
 ./run-tests.sh              # Unit + integration + security audit
@@ -89,7 +86,7 @@ You can also run `./test-backup.sh` (with `--quick`, `--unit`, or `--integration
 
 | Platform | How to verify |
 |----------|---------------|
-| **macOS** | `./run-tests.sh` (all 42 tests), `./backup.sh --quick --dry-run`, `./verify-implementation.sh` |
+| **macOS** | `./run-tests.sh` (all 48 tests), `./backup.sh --quick --dry-run`, `./verify-implementation.sh` |
 | **Linux (Ubuntu)** | Same commands; uses GNU tools (`stat -c`, `date -d`, etc.) |
 | **WSL2** | Same as Linux; use `/mnt/c`, `/mnt/d` etc. for Windows drives (see **Paths by platform** below) |
 
@@ -106,7 +103,7 @@ The app uses `uname -s` to choose the right commands (e.g. BSD vs GNU `find`, `s
 
 ## Configuration
 
-Edit **`config.sh`**. You must set at least one **source** and one **destination**; no automatic defaults.
+Edit **`config.sh`**. Sensible defaults ($HOME, $HOME/backups) are pre-configured; edit to narrow scope (e.g. $HOME/Developer) or use different paths.
 
 - **`DEFAULT_SOURCE_DIRS`** – array of directories to back up
 - **`DEFAULT_BACKUP_DIR`** – backup destination
@@ -176,7 +173,7 @@ If your change affects platform-specific behavior, validate at least one of:
 - Tar extraction uses `--no-same-owner` on Linux to prevent root-owned restored files
 - Archive traversal checks (absolute paths, `../`) before extraction
 - Mail credentials wiped with `shred`/`dd` after use
-- `set-permissions.sh` uses `chmod 755` (not 777)
+- `secure-permissions.sh` sets `chmod 755` scripts, 640 config, 750 dirs (not 777)
 
 Full details: [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md)
 
@@ -188,11 +185,15 @@ Full details: [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md)
 | `backup.sh`, `restore.sh`, `quick-backup.sh` | Backup and restore |
 | `prune-backups.sh` | Prune old backups (keep 5 latest or delete one by one) |
 | `config.sh`, `utils.sh`, `fs.sh`, `ui.sh` | Config and shared modules |
+| `utils-os.sh`, `utils-time.sh`, `utils-path.sh`, `utils-format.sh` | Utils submodules (sourced by utils.sh) |
+| `parse-backup-args.sh` | CLI parsing for backup.sh |
 | `configure-cron.sh` | Cron schedules (uses mktemp) |
 | `compare-backups.sh` | Compare two backups |
 | `run-tests.sh`, `test-backup.sh` | Tests (unit + integration + security) |
+| `test/test-cron.sh`, `test/test-tar-compatibility.sh` | Cron and tar compatibility tests (`npm run test:cron`, `test:tar`) |
 | `check-config.sh`, `security-audit.sh`, `secure-*.sh` | Config and security |
 | `list-logs.sh` | List log files: `--short` for paths only; `--errors` or `--list-log-errors` for error/warning lines only |
+| `cleanup-backup-files.sh` | Organize backup dir: `npm run organize`, `organize:all`, `organize:dry` |
 
 Legacy code: `archive/src.legacy/`. More docs: `docs/`, `test/README.md`.
 
@@ -220,7 +221,7 @@ Common: `npm start`, `npm test`, `npm run backup`, `npm run backup:quick`, `npm 
 
 ## More
 
-- **Architecture:** [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **Security review:** [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md)
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 - **License:** MIT (see LICENSE)

@@ -374,6 +374,65 @@ list_all_backups() {
     fi
 }
 
+# ---- Cloud helper: run an S3-compatible transfer (upload or download) ----
+# Handles interactive progress monitoring, bandwidth limiting, and logging.
+# Usage: _s3_transfer "upload"|"download" LOCAL REMOTE LABEL LOG SILENT LIMIT [ENDPOINT]
+_s3_transfer() {
+    local direction="$1" local_path="$2" remote_path="$3" label="$4"
+    local log_file="$5" silent_mode="$6" limit_cmd="$7" endpoint_url="${8:-}"
+    
+    local ep_flag=""
+    [ -n "$endpoint_url" ] && ep_flag="--endpoint-url $endpoint_url"
+    
+    local src dst
+    if [ "$direction" = "upload" ]; then
+        src="$local_path"; dst="$remote_path"
+    else
+        src="$remote_path"; dst="$local_path"
+    fi
+    
+    log "${label}: $remote_path" "$log_file" "$silent_mode"
+    
+    if [ "$silent_mode" = false ] && [ "$direction" = "upload" ]; then
+        local file_size
+        file_size=$(get_file_size_bytes "$local_path")
+        # shellcheck disable=SC2086
+        (aws s3 cp $limit_cmd "$src" "$dst" $ep_flag 2>/dev/null) &
+        local pid=$!
+        monitor_file_progress "/dev/null" "$file_size" "$label" "$pid" 1
+        wait $pid
+        local status=$?
+    else
+        # shellcheck disable=SC2086
+        aws s3 cp $limit_cmd "$src" "$dst" $ep_flag
+        local status=$?
+    fi
+    
+    if [ "$status" -eq 0 ]; then
+        log "Successfully completed $label" "$log_file" "$silent_mode"
+    else
+        log "Failed: $label" "$log_file" "$silent_mode"
+    fi
+    return $status
+}
+
+# ---- Cloud helper: save/restore DO Spaces AWS credential swap ----
+_do_save_aws_creds() {
+    _SAVED_AWS_KEY="${AWS_ACCESS_KEY_ID:-}"
+    _SAVED_AWS_SECRET="${AWS_SECRET_ACCESS_KEY:-}"
+    _SAVED_AWS_REGION="${AWS_DEFAULT_REGION:-}"
+    export AWS_ACCESS_KEY_ID="$DO_SPACES_KEY"
+    export AWS_SECRET_ACCESS_KEY="$DO_SPACES_SECRET"
+    export AWS_DEFAULT_REGION="${DO_SPACES_REGION:-nyc3}"
+}
+_do_restore_aws_creds() {
+    if [ -n "$_SAVED_AWS_KEY" ]; then
+        export AWS_ACCESS_KEY_ID="$_SAVED_AWS_KEY"
+        export AWS_SECRET_ACCESS_KEY="$_SAVED_AWS_SECRET"
+        export AWS_DEFAULT_REGION="$_SAVED_AWS_REGION"
+    fi
+}
+
 # Upload backup to cloud storage
 upload_to_cloud() {
     local backup_file=$1
@@ -387,208 +446,78 @@ upload_to_cloud() {
         limit_cmd="--bwlimit=$bandwidth_limit"
     fi
     
-    # Get file size for progress reporting
-    local file_size=$(get_file_size_bytes "$backup_file")
-    log "Starting upload of $(basename "$backup_file") ($(format_size $file_size))" "$log_file" "$silent_mode"
+    local file_size
+    file_size=$(get_file_size_bytes "$backup_file")
+    log "Starting upload of $(basename "$backup_file") ($(format_size "$file_size"))" "$log_file" "$silent_mode"
     
     case "$provider" in
         aws|s3)
-            # Check AWS CLI is installed
             if ! command -v aws >/dev/null 2>&1; then
-                log "AWS CLI not installed. Cannot upload to S3." "$log_file"
-                return 1
+                log "AWS CLI not installed. Cannot upload to S3." "$log_file"; return 1
             fi
-            
-            # Set AWS credentials if available
-            if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ]; then
-                export AWS_ACCESS_KEY_ID
-                export AWS_SECRET_ACCESS_KEY
+            if [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+                export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
                 export AWS_DEFAULT_REGION="${S3_REGION:-us-west-2}"
                 log "Using AWS credentials from secrets file" "$log_file"
             fi
-            
-            # Upload to S3
             local bucket="${S3_BUCKET:-webdev-backups}"
-            local s3_path="s3://$bucket/$(basename "$backup_file")"
-            
-            log "Uploading to S3: $s3_path" "$log_file" "$silent_mode"
-            
-            if [ "$silent_mode" = false ]; then
-                # Show progress for interactive mode
-                (aws s3 cp $limit_cmd "$backup_file" "$s3_path" 2>/dev/null) &
-                local upload_pid=$!
-                
-                # Monitor upload progress
-                monitor_file_progress "/dev/null" "$file_size" "Uploading to S3" "$upload_pid" 1
-                
-                # Wait for upload to finish
-                wait $upload_pid
-                local upload_status=$?
-                
-                if [ "$upload_status" -eq 0 ]; then
-                    log "Successfully uploaded to S3: $s3_path" "$log_file" "$silent_mode"
-                    return 0
-                else
-                    log "Failed to upload to S3: $s3_path" "$log_file" "$silent_mode"
-                    return 1
-                fi
-            else
-                # Silent mode - run normally
-                if aws s3 cp $limit_cmd "$backup_file" "$s3_path"; then
-                    log "Successfully uploaded to S3: $s3_path" "$log_file" "$silent_mode"
-                    return 0
-                else
-                    log "Failed to upload to S3: $s3_path" "$log_file" "$silent_mode"
-                    return 1
-                fi
-            fi
+            _s3_transfer "upload" "$backup_file" "s3://$bucket/$(basename "$backup_file")" \
+                "Uploading to S3" "$log_file" "$silent_mode" "$limit_cmd"
+            return $?
             ;;
-            
         do|spaces|digitalocean)
-            # Check AWS CLI is installed (DO Spaces uses S3-compatible API)
             if ! command -v aws >/dev/null 2>&1; then
-                log "AWS CLI not installed. Cannot upload to DigitalOcean Spaces." "$log_file"
-                return 1
+                log "AWS CLI not installed. Cannot upload to DigitalOcean Spaces." "$log_file"; return 1
             fi
-            
-            # Set DigitalOcean Spaces credentials if available
-            if [ -n "$DO_SPACES_KEY" ] && [ -n "$DO_SPACES_SECRET" ]; then
-                # Store the current AWS creds if they exist
-                local AWS_KEY_BACKUP="$AWS_ACCESS_KEY_ID"
-                local AWS_SECRET_BACKUP="$AWS_SECRET_ACCESS_KEY"
-                local AWS_REGION_BACKUP="$AWS_DEFAULT_REGION"
-                
-                # Set DO credentials
-                export AWS_ACCESS_KEY_ID="$DO_SPACES_KEY"
-                export AWS_SECRET_ACCESS_KEY="$DO_SPACES_SECRET"
-                export AWS_DEFAULT_REGION="${DO_SPACES_REGION:-nyc3}"
+            if [ -n "${DO_SPACES_KEY:-}" ] && [ -n "${DO_SPACES_SECRET:-}" ]; then
+                _do_save_aws_creds
                 log "Using DigitalOcean Spaces credentials from secrets file" "$log_file"
             else
-                log "DigitalOcean Spaces credentials not found in secrets file." "$log_file"
-                return 1
+                log "DigitalOcean Spaces credentials not found in secrets file." "$log_file"; return 1
             fi
-            
-            # Upload to DigitalOcean Spaces
             local bucket="${DO_SPACES_BUCKET:-webdev-backups}"
             local endpoint="${DO_SPACES_ENDPOINT:-nyc3.digitaloceanspaces.com}"
-            local spaces_path="s3://$bucket/$(basename "$backup_file")"
-            
-            log "Uploading to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
-            
-            if [ "$silent_mode" = false ]; then
-                # Show progress for interactive mode
-                (aws s3 cp $limit_cmd "$backup_file" "$spaces_path" --endpoint-url "https://$endpoint" 2>/dev/null) &
-                local upload_pid=$!
-                
-                # Monitor upload progress
-                monitor_file_progress "/dev/null" "$file_size" "Uploading to DigitalOcean Spaces" "$upload_pid" 1
-                
-                # Wait for upload to finish
-                wait $upload_pid
-                local upload_status=$?
-                
-                # Restore original AWS credentials if they existed
-                if [ -n "$AWS_KEY_BACKUP" ]; then
-                    export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
-                    export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
-                    export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
-                fi
-                
-                if [ "$upload_status" -eq 0 ]; then
-                    log "Successfully uploaded to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
-                    return 0
-                else
-                    log "Failed to upload to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
-                    return 1
-                fi
-            else
-                # Silent mode - run normally
-                if aws s3 cp $limit_cmd "$backup_file" "$spaces_path" --endpoint-url "https://$endpoint"; then
-                    log "Successfully uploaded to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
-                    
-                    # Restore original AWS credentials if they existed
-                    if [ -n "$AWS_KEY_BACKUP" ]; then
-                        export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
-                        export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
-                        export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
-                    fi
-                    
-                    return 0
-                else
-                    log "Failed to upload to DigitalOcean Spaces: $spaces_path" "$log_file" "$silent_mode"
-                    
-                    # Restore original AWS credentials if they existed
-                    if [ -n "$AWS_KEY_BACKUP" ]; then
-                        export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
-                        export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
-                        export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
-                    fi
-                    
-                    return 1
-                fi
-            fi
+            _s3_transfer "upload" "$backup_file" "s3://$bucket/$(basename "$backup_file")" \
+                "Uploading to DigitalOcean Spaces" "$log_file" "$silent_mode" "$limit_cmd" "https://$endpoint"
+            local ret=$?
+            _do_restore_aws_creds
+            return $ret
             ;;
-        
         dropbox)
-            # Check if Dropbox CLI is installed
             if ! command -v dropbox-uploader >/dev/null 2>&1; then
-                log "Dropbox Uploader not installed. Cannot upload to Dropbox." "$log_file"
-                return 1
+                log "Dropbox Uploader not installed. Cannot upload to Dropbox." "$log_file"; return 1
             fi
-            
-            # Setup Dropbox credentials if available
-            if [ -n "$DROPBOX_ACCESS_TOKEN" ]; then
-                # Create or update the config file for dropbox-uploader
+            if [ -n "${DROPBOX_ACCESS_TOKEN:-}" ]; then
                 local dropbox_config="${HOME}/.dropbox_uploader"
                 echo "OAUTH_ACCESS_TOKEN=$DROPBOX_ACCESS_TOKEN" > "$dropbox_config"
                 chmod 600 "$dropbox_config"
-                
                 log "Using Dropbox credentials from secrets file" "$log_file"
             fi
-            
-            # Upload to Dropbox
             local dropbox_path="/backups/$(basename "$backup_file")"
-            
             log "Uploading to Dropbox: $dropbox_path" "$log_file"
             if dropbox-uploader upload "$backup_file" "$dropbox_path"; then
-                log "Successfully uploaded to Dropbox: $dropbox_path" "$log_file"
-                return 0
+                log "Successfully uploaded to Dropbox: $dropbox_path" "$log_file"; return 0
             else
-                log "Failed to upload to Dropbox: $dropbox_path" "$log_file"
-                return 1
+                log "Failed to upload to Dropbox: $dropbox_path" "$log_file"; return 1
             fi
             ;;
-        
         gdrive|google)
-            # Check if Google Drive CLI is installed
             if ! command -v gdrive >/dev/null 2>&1; then
-                log "Google Drive CLI not installed. Cannot upload to Google Drive." "$log_file"
-                return 1
+                log "Google Drive CLI not installed. Cannot upload to Google Drive." "$log_file"; return 1
             fi
-            
-            # Setup Google Drive credentials if available
-            if [ -n "$GDRIVE_CLIENT_ID" ] && [ -n "$GDRIVE_CLIENT_SECRET" ] && [ -n "$GDRIVE_REFRESH_TOKEN" ]; then
-                # Create or update the credentials file
-                local gdrive_config_dir="${HOME}/.gdrive"
-                mkdir -p "$gdrive_config_dir"
-                
+            if [ -n "${GDRIVE_CLIENT_ID:-}" ] && [ -n "${GDRIVE_CLIENT_SECRET:-}" ] && [ -n "${GDRIVE_REFRESH_TOKEN:-}" ]; then
+                mkdir -p "${HOME}/.gdrive"
                 log "Using Google Drive credentials from secrets file" "$log_file"
             fi
-            
-            # Upload to Google Drive
             log "Uploading to Google Drive: $(basename "$backup_file")" "$log_file"
             if gdrive upload "$backup_file"; then
-                log "Successfully uploaded to Google Drive" "$log_file"
-                return 0
+                log "Successfully uploaded to Google Drive" "$log_file"; return 0
             else
-                log "Failed to upload to Google Drive" "$log_file"
-                return 1
+                log "Failed to upload to Google Drive" "$log_file"; return 1
             fi
             ;;
-        
         *)
-            log "Unknown cloud provider: $provider" "$log_file"
-            return 1
+            log "Unknown cloud provider: $provider" "$log_file"; return 1
             ;;
     esac
 }
@@ -608,133 +537,62 @@ download_from_cloud() {
     
     case "$provider" in
         aws|s3)
-            # Check AWS CLI is installed
             if ! command -v aws >/dev/null 2>&1; then
-                log "AWS CLI not installed. Cannot download from S3." "$log_file"
-                return 1
+                log "AWS CLI not installed. Cannot download from S3." "$log_file"; return 1
             fi
-            
-            # Download from S3
             local bucket="${S3_BUCKET:-webdev-backups}"
-            local s3_path="s3://$bucket/$backup_name"
-            local local_path="$download_dir/$backup_name"
-            
-            log "Downloading from S3: $s3_path" "$log_file"
-            if aws s3 cp $limit_cmd "$s3_path" "$local_path"; then
-                log "Successfully downloaded from S3: $local_path" "$log_file"
-                return 0
-            else
-                log "Failed to download from S3: $s3_path" "$log_file"
-                return 1
-            fi
+            _s3_transfer "download" "$download_dir/$backup_name" "s3://$bucket/$backup_name" \
+                "Downloading from S3" "$log_file" "true" "$limit_cmd"
+            return $?
             ;;
-            
         do|spaces|digitalocean)
-            # Check AWS CLI is installed (DO Spaces uses S3-compatible API)
             if ! command -v aws >/dev/null 2>&1; then
-                log "AWS CLI not installed. Cannot download from DigitalOcean Spaces." "$log_file"
-                return 1
+                log "AWS CLI not installed. Cannot download from DigitalOcean Spaces." "$log_file"; return 1
             fi
-            
-            # Set DigitalOcean Spaces credentials if available
-            if [ -n "$DO_SPACES_KEY" ] && [ -n "$DO_SPACES_SECRET" ]; then
-                # Store the current AWS creds if they exist
-                local AWS_KEY_BACKUP="$AWS_ACCESS_KEY_ID"
-                local AWS_SECRET_BACKUP="$AWS_SECRET_ACCESS_KEY"
-                local AWS_REGION_BACKUP="$AWS_DEFAULT_REGION"
-                
-                # Set DO credentials
-                export AWS_ACCESS_KEY_ID="$DO_SPACES_KEY"
-                export AWS_SECRET_ACCESS_KEY="$DO_SPACES_SECRET"
-                export AWS_DEFAULT_REGION="${DO_SPACES_REGION:-nyc3}"
+            if [ -n "${DO_SPACES_KEY:-}" ] && [ -n "${DO_SPACES_SECRET:-}" ]; then
+                _do_save_aws_creds
                 log "Using DigitalOcean Spaces credentials from secrets file" "$log_file"
             else
-                log "DigitalOcean Spaces credentials not found in secrets file." "$log_file"
-                return 1
+                log "DigitalOcean Spaces credentials not found in secrets file." "$log_file"; return 1
             fi
-            
-            # Download from DigitalOcean Spaces
             local bucket="${DO_SPACES_BUCKET:-webdev-backups}"
             local endpoint="${DO_SPACES_ENDPOINT:-nyc3.digitaloceanspaces.com}"
-            local spaces_path="s3://$bucket/$backup_name"
-            local local_path="$download_dir/$backup_name"
-            
-            log "Downloading from DigitalOcean Spaces: $spaces_path" "$log_file"
-            if aws s3 cp $limit_cmd "$spaces_path" "$local_path" --endpoint-url "https://$endpoint"; then
-                log "Successfully downloaded from DigitalOcean Spaces: $local_path" "$log_file"
-                
-                # Restore original AWS credentials if they existed
-                if [ -n "$AWS_KEY_BACKUP" ]; then
-                    export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
-                    export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
-                    export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
-                fi
-                
-                return 0
-            else
-                log "Failed to download from DigitalOcean Spaces: $spaces_path" "$log_file"
-                
-                # Restore original AWS credentials if they existed
-                if [ -n "$AWS_KEY_BACKUP" ]; then
-                    export AWS_ACCESS_KEY_ID="$AWS_KEY_BACKUP"
-                    export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_BACKUP"
-                    export AWS_DEFAULT_REGION="$AWS_REGION_BACKUP"
-                fi
-                
-                return 1
-            fi
+            _s3_transfer "download" "$download_dir/$backup_name" "s3://$bucket/$backup_name" \
+                "Downloading from DigitalOcean Spaces" "$log_file" "true" "$limit_cmd" "https://$endpoint"
+            local ret=$?
+            _do_restore_aws_creds
+            return $ret
             ;;
-        
         dropbox)
-            # Check if Dropbox CLI is installed
             if ! command -v dropbox-uploader >/dev/null 2>&1; then
-                log "Dropbox Uploader not installed. Cannot download from Dropbox." "$log_file"
-                return 1
+                log "Dropbox Uploader not installed. Cannot download from Dropbox." "$log_file"; return 1
             fi
-            
-            # Download from Dropbox
             local dropbox_path="/backups/$backup_name"
-            local local_path="$download_dir/$backup_name"
-            
             log "Downloading from Dropbox: $dropbox_path" "$log_file"
-            if dropbox-uploader download "$dropbox_path" "$local_path"; then
-                log "Successfully downloaded from Dropbox: $local_path" "$log_file"
-                return 0
+            if dropbox-uploader download "$dropbox_path" "$download_dir/$backup_name"; then
+                log "Successfully downloaded from Dropbox: $download_dir/$backup_name" "$log_file"; return 0
             else
-                log "Failed to download from Dropbox: $dropbox_path" "$log_file"
-                return 1
+                log "Failed to download from Dropbox: $dropbox_path" "$log_file"; return 1
             fi
             ;;
-        
         gdrive|google)
-            # Check if Google Drive CLI is installed
             if ! command -v gdrive >/dev/null 2>&1; then
-                log "Google Drive CLI not installed. Cannot download from Google Drive." "$log_file"
-                return 1
+                log "Google Drive CLI not installed. Cannot download from Google Drive." "$log_file"; return 1
             fi
-            
-            # First, find the file by name
-            local file_id=$(gdrive list --query "name = '$backup_name'" --no-header | head -1 | awk '{print $1}')
-            
+            local file_id
+            file_id=$(gdrive list --query "name = '$backup_name'" --no-header | head -1 | awk '{print $1}')
             if [ -z "$file_id" ]; then
-                log "File not found in Google Drive: $backup_name" "$log_file"
-                return 1
+                log "File not found in Google Drive: $backup_name" "$log_file"; return 1
             fi
-            
-            # Download from Google Drive
             log "Downloading from Google Drive: $backup_name (ID: $file_id)" "$log_file"
             if gdrive download --path "$download_dir" "$file_id"; then
-                log "Successfully downloaded from Google Drive: $download_dir/$backup_name" "$log_file"
-                return 0
+                log "Successfully downloaded from Google Drive: $download_dir/$backup_name" "$log_file"; return 0
             else
-                log "Failed to download from Google Drive: $backup_name" "$log_file"
-                return 1
+                log "Failed to download from Google Drive: $backup_name" "$log_file"; return 1
             fi
             ;;
-        
         *)
-            log "Unknown cloud provider: $provider" "$log_file"
-            return 1
+            log "Unknown cloud provider: $provider" "$log_file"; return 1
             ;;
     esac
 }

@@ -190,6 +190,30 @@ if [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "unit" ]; then
         # --- verify_backup: corrupted archive ---
         run_test "Verify backup: corrupted archive fails" "echo 'not_a_tar' > \"$TEST_DIR/bad.tar.gz\" && ! verify_backup \"$TEST_DIR/bad.tar.gz\""
     fi
+
+    # --- files_differ (moved to utils-path.sh) ---
+    run_test "files_differ: identical files" "echo 'same' > \"$TEST_DIR/f1.txt\" && cp \"$TEST_DIR/f1.txt\" \"$TEST_DIR/f2.txt\" && ! files_differ \"$TEST_DIR/f1.txt\" \"$TEST_DIR/f2.txt\""
+    run_test "files_differ: different files" "echo 'aaa' > \"$TEST_DIR/d1.txt\" && echo 'bbb' > \"$TEST_DIR/d2.txt\" && files_differ \"$TEST_DIR/d1.txt\" \"$TEST_DIR/d2.txt\""
+    run_test "files_differ: missing file counts as different" "files_differ \"$TEST_DIR/d1.txt\" \"$TEST_DIR/no_such_file_xyz\""
+
+    # --- get_file_permissions (moved to utils-path.sh) ---
+    run_test "get_file_permissions: returns octal" "chmod 644 \"$TEST_DIR/f1.txt\" && result=\$(get_file_permissions \"$TEST_DIR/f1.txt\") && [[ \"\$result\" == \"644\" ]]"
+
+    # --- get_file_mtime (moved to utils-time.sh) ---
+    run_test "get_file_mtime: returns number" "result=\$(get_file_mtime \"$TEST_DIR/f1.txt\") && [[ \"\$result\" =~ ^[0-9]+$ ]]"
+
+    # --- format_file_date (moved to utils-time.sh) ---
+    run_test "format_file_date: returns date string" "result=\$(format_file_date \"$TEST_DIR/f1.txt\") && [[ \"\$result\" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]"
+
+    # --- report_error from error-handling.sh ---
+    run_test "report_error: returns error code" "source \"$SCRIPT_DIR/error-handling.sh\" && report_error 4 'test warning' /dev/null true 1; [[ \$? -eq 4 ]]"
+    run_test "report_error: log_warning callable" "source \"$SCRIPT_DIR/error-handling.sh\" && log_warning 'test warning' 2>/dev/null; [[ \$? -eq 1 ]]"
+
+    # --- abs_path (moved to utils-path.sh earlier, verify still works) ---
+    run_test "abs_path: resolves /tmp" "result=\$(abs_path /tmp) && [[ \"\$result\" =~ ^/ ]]"
+
+    # --- cloud tools: missing CLI returns error ---
+    run_test "upload_to_cloud: unknown provider fails" "! upload_to_cloud /dev/null unknown_provider 2>/dev/null"
 fi
 
 # Run integration tests if specified
@@ -275,6 +299,33 @@ if [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "integration" ]; then
             )
             [[ \$? -eq 0 ]]
         "
+
+        # --- Actual restore extraction (not just dry-run) ---
+        run_test "Restore extracts files correctly" "
+            backup_file=\$(find \"$TEST_DIR/backup\" -name '*.tar.gz' -type f | head -1)
+            if [ -z \"\$backup_file\" ]; then exit 1; fi
+            restore_dir=\"$TEST_DIR/restore_test_\$\$\"
+            mkdir -p \"\$restore_dir\"
+            tar -xzf \"\$backup_file\" -C \"\$restore_dir\" 2>/dev/null
+            found=\$(find \"\$restore_dir\" -name 'app.js' | head -1)
+            rm -rf \"\$restore_dir\"
+            [ -n \"\$found\" ]
+        "
+
+        # --- Negative test: backup with nonexistent source fails ---
+        run_test "Backup fails with invalid source" "
+            ! $SCRIPT_DIR/backup.sh --source /tmp/no_such_dir_xyz_backup_test --destination \"$TEST_DIR/backup\" --silent 2>/dev/null
+        "
+
+        # --- Negative test: backup with read-only dest fails ---
+        run_test "Backup fails with unwritable destination" "
+            ro_dir=\"$TEST_DIR/readonly_dest_\$\$\"
+            mkdir -p \"\$ro_dir\" && chmod 444 \"\$ro_dir\"
+            $SCRIPT_DIR/backup.sh --source \"$TEST_PROJECT_DIR\" --destination \"\$ro_dir\" --silent 2>/dev/null
+            status=\$?
+            chmod 755 \"\$ro_dir\" 2>/dev/null; rm -rf \"\$ro_dir\"
+            [ \$status -ne 0 ]
+        "
     fi
     
     # Clean up test project
@@ -286,8 +337,8 @@ fi
 # Display summary
 echo -e "\n${CYAN}===== Test Results =====${NC}"
 echo "Total tests: $TESTS_TOTAL"
-echo "Passed: ${GREEN}$TESTS_PASSED${NC}"
-echo "Failed: ${RED}$TESTS_FAILED${NC}"
+echo -e "Passed: ${GREEN}$TESTS_PASSED${NC}"
+echo -e "Failed: ${RED}$TESTS_FAILED${NC}"
 
 echo "-------------------------------------------" >> "$TEST_LOG"
 echo "TEST SUMMARY:" >> "$TEST_LOG"

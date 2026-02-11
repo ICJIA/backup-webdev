@@ -31,10 +31,10 @@ The app is sound for desktop/CLI use. Path sanitization, archive traversal check
 **Risk:** `extract_backup()` in `fs.sh` used plain `tar -xzf`. On Linux, if run as root, tar would restore original file ownership, which could create root-owned files in user directories. The verification extract in `utils.sh` already used `--no-same-owner`.  
 **Fix:** Added `--no-same-owner` to `extract_backup()` on Linux. Skipped on macOS (BSD tar doesn't support it; macOS tar already ignores ownership by default for non-root).
 
-### 5. `set-permissions.sh` used `chmod 777` — FIXED
+### 5. Overly permissive script permissions — FIXED
 
-**Risk:** All scripts set to world-writable and world-executable. Any user on the system could modify scripts.  
-**Fix:** Changed to `chmod 755` (owner rwx, group/other rx). Added `umask 027`. Added note pointing users to `secure-permissions.sh` for stricter (640/750) permissions.
+**Risk:** Scripts could be set to world-writable (e.g. `chmod 777`), allowing any user to modify them.  
+**Fix:** Use `./secure-permissions.sh` to set proper permissions (755 scripts, 640 config, 750 dirs). `umask 027` is used in utils, encryption, and setup scripts.
 
 ---
 
@@ -61,7 +61,7 @@ The app is sound for desktop/CLI use. Path sanitization, archive traversal check
 - **No `/tmp/` in active code.** All temp files use `mktemp` / `mktemp -d`.
 - **Path sanitization:** `validate_path()` and `sanitize_input()` used for email, browser, and sensitive contexts.
 - **Archive safety:** Traversal checks (`../`, absolute paths) before extraction; `--no-same-owner` on extract.
-- **Permissions:** `umask 027` in utils/encryption/setup; `secure-permissions.sh` sets 755/640/750; `set-permissions.sh` now uses 755 (was 777).
+- **Permissions:** `umask 027` in utils/encryption/setup; `secure-permissions.sh` sets 755/640/750.
 - **Secrets:** `secrets.sh` gitignored; mail credentials wiped with `shred` or `dd` + `rm`.
 - **Security audit:** Portable (`-perm -0002`), excludes archive, allowlists templates and controlled eval. Passes clean.
 - **Platform:** Same code paths on macOS, Linux, WSL2. `--no-same-owner` skipped on macOS (not needed). No platform-specific gaps.
@@ -73,8 +73,8 @@ The app is sound for desktop/CLI use. Path sanitization, archive traversal check
 All tests pass. Security audit reports 0 issues.
 
 ```
-Unit Tests:       6/6 PASSED
-Integration Tests: 4/4 PASSED
+Unit Tests:       38/38 PASSED
+Integration Tests: 10/10 PASSED
 Security Audit:   0 issues found
 ```
 
@@ -85,4 +85,4 @@ Security Audit:   0 issues found
 1. **utils.sh** — `mktemp` for basic-email message file (was `/tmp/email_message_$$`)
 2. **compare-backups.sh** — Removed dead `/tmp/..._$$` writes; fixed `find_latest_backup()` syntax
 3. **fs.sh** — Added `--no-same-owner` to `extract_backup()` on Linux
-4. **set-permissions.sh** — `chmod 755` (was 777); added `umask 027`; added note for `secure-permissions.sh`
+4. **Permissions** — Use `secure-permissions.sh` for 755/640/750; `umask 027` in key scripts
