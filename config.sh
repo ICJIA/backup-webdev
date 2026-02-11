@@ -161,14 +161,11 @@ FIRST_RUN_MARKER="$SCRIPT_DIR/.configured"
 BACKUP_PREFIX="webdev_backup"
 DATE_FORMAT="%Y-%m-%d_%H-%M-%S"
 
-# When running the test suite, use test defaults if user has not configured source/dest
+# When running the test suite, always use test defaults (CI and local runs)
+# This overrides user config so tests pass regardless of committed paths
 if [ -n "${RUNNING_TESTS:-}" ]; then
-    if [ ${#DEFAULT_SOURCE_DIRS[@]} -eq 0 ]; then
-        DEFAULT_SOURCE_DIRS=("$SCRIPT_DIR/test-projects")
-    fi
-    if [ -z "$DEFAULT_BACKUP_DIR" ]; then
-        DEFAULT_BACKUP_DIR="$SCRIPT_DIR/test/backup_out"
-    fi
+    DEFAULT_SOURCE_DIRS=("$SCRIPT_DIR/test")
+    DEFAULT_BACKUP_DIR="$SCRIPT_DIR/test/backup_out"
 fi
 
 # ----------------------------------------------------------------------------------
