@@ -14,31 +14,33 @@
 
 A backup solution for web development projects: multiple source directories, full/incremental/differential backups, compression, integrity verification, and optional cloud (planned).
 
-## Quick Start
+## Quick Start (clone and run in 2 minutes)
 
-**Run directly (from the repo):**
-
-```bash
-cd /path/to/backup-webdev
-./webdev-backup.sh          # Interactive menu (press Enter for Quick Backup)
-./backup.sh --quick         # Quick backup with defaults (no menu)
-```
-
-From the menu, **Quick Backup** is the default: press **Enter** to start a backup with your configured sources and destination. Quick backup shows the same per-folder progress (dashboard) as an interactive run—no prompts for project selection.
-
-**Run from anywhere via alias** — add to `~/.bashrc` or `~/.zshrc`:
+Clone, run install (sets permissions, creates dirs, checks tools), run tests, edit config, then backup.
 
 ```bash
-alias webback='/path/to/backup-webdev/webdev-backup.sh'
+git clone https://github.com/yourusername/backup-webdev.git
+cd backup-webdev
+./install.sh                    # Sets chmod +x, creates logs/test, checks tools (decline alias/security prompts if you prefer)
+./run-tests.sh                  # Verify it works (48 tests, no config needed)
 ```
 
-Use the real path to this cloned repo on your machine (e.g. `$HOME/backup-webdev` or `/Volumes/MyDrive/backup-webdev`). Then either open a new terminal or run `source ~/.zshrc` (or `source ~/.bashrc`) and use:
+Edit `config.sh` — set your **source** and **destination** paths (see [Configuration](#configuration)):
 
 ```bash
-webback
+# In config.sh: DEFAULT_SOURCE_DIRS=("$HOME/Developer")  # or your project dirs
+#              DEFAULT_BACKUP_DIR="$HOME/backups"       # where to store backups
 ```
 
-You can also run `./setup-alias.sh` from the repo to add the alias for you.
+Then run:
+
+```bash
+./backup.sh --dry-run            # Smoke test (no writes)
+./webdev-backup.sh               # Interactive menu — press Enter for Quick Backup
+./backup.sh --quick              # Direct quick backup (no menu)
+```
+
+**Optional:** Run `./setup-alias.sh` to add a `webback` alias. This is a run-from-repo tool — no system-wide install.
 
 ## Features
 
@@ -52,16 +54,6 @@ You can also run `./setup-alias.sh` from the repo to add the alias for you.
 
 - **Bash** 3.2+ (macOS-compatible)
 - **tar**, **gzip** (required); **pigz**, **gnuplot**, **AWS CLI** (optional)
-
-## Installation
-
-```bash
-git clone https://github.com/yourusername/backup-webdev.git
-cd backup-webdev
-./install.sh
-```
-
-Manual: `chmod +x *.sh`, then `./setup-alias.sh` and `./check-config.sh`.
 
 ## Usage
 
