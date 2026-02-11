@@ -1,7 +1,12 @@
 # WebDev Backup Tool
 
-<!-- Optional CI badge (replace USER/REPO with your GitHub org/repo) -->
 [![CI](https://github.com/USER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/REPO/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL2-blue.svg)](README.md#platform-verification-macos-linux-wsl2)
+[![Tests](https://img.shields.io/badge/tests-48%20passing-brightgreen.svg)](README.md#testing)
+[![Bash](https://img.shields.io/badge/Bash-3.2%2B-green.svg)](README.md#requirements)
+
+<!-- Replace USER/REPO in the CI badge with your GitHub org/repo -->
 
 <p align="center">
   <img src="assets/og-image.png" alt="WebDev Backup Tool" width="1200" />
